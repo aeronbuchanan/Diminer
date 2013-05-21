@@ -68,6 +68,7 @@ private:
 
 	std::vector<std::vector<int> > m_boundarySides;
 	BoundaryGrads m_boundaryGrad;
+	float m_maxGrad;
 	float m_pow;
 
 	AnimDisp * debugDisp; // DEBUG

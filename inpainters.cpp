@@ -85,7 +85,6 @@ Color WeightedInpainter::pixelColor(Coord _c)
 void GradientWeightedInpainter::init(CImg<uchar> const * const _img)
 {
 	CImg<uchar> img(*_img);
-	img.blur(1.5);
 
 	// greyscale
 	CImg<float> g(img.width(), img.height(), 1, 1, 0.f);
@@ -93,19 +92,87 @@ void GradientWeightedInpainter::init(CImg<uchar> const * const _img)
 		g(x,y) += img(x,y,k);
 
 	// gradient
-	// TODO: take note of mask
 	CImg<float> grad(img.width(), img.height(), 3, 1, 0.f);
 
-	CImg_3x3(I, float);
-	cimg_for3x3(g, x, y, 0, 0, I, float)
-	{
-		float gx = (Inc - Ipc);
-		float gy = (Icn - Icp);
-		float mag = sqrt( gx * gx + gy * gy );
-		grad(x,y,0) = mag;
-		grad(x,y,1) = gx / mag;
-		grad(x,y,2) = gy / mag;
+	CImg<uchar> debugGrad(img.width(), img.height(), 1, 3, 0);
+
+/*
+	@misc{NRIGO,
+	Author = {Pavel Holoborodko},
+	Title = {Noise Robust Gradient Operators.},
+	howpublished = {\url{http://www.holoborodko.com/pavel/image-processing/edge-detection/}}
+	year = {2009}
 	}
+
+	dI/dx = 1/32 [ -1 -2 0 2 1; -2 -4 0 4 2; -1 -2 0 2 1 ]
+
+	(like an extended Sobel kernel)
+*/
+
+	// TODO: take note of mask
+	// TODO: optimize recalculations
+	for ( int y = 0; y < g.height(); ++y )
+	{
+		int y_pp = std::max( 0, y - 2);
+		int y_p = std::max( 0, y - 1);
+		int y_n = std::min( g.height() - 1, y + 1);
+		int y_nn = std::min( g.height() - 1, y + 2);
+
+		for ( int x = 0; x < g.width(); ++x )
+		{
+			int x_pp = std::max( 0, x - 2);
+			int x_p = std::max( 0, x - 1);
+			int x_n = std::min( g.width() - 1, x + 1);
+			int x_nn = std::min( g.width() - 1, x + 2);
+
+			float gxppyp = g(x_pp, y_p, 0);
+			float gxpyp = g(x_p, y_p, 0);
+			float gxnyp = g(x_n, y_p, 0);
+			float gxnnyp = g(x_nn, y_p, 0);
+
+			float gxppy = g(x_pp, y, 0);
+			float gxpy = g(x_p, y, 0);
+			float gxny = g(x_n, y, 0);
+			float gxnny = g(x_nn, y, 0);
+
+			float gxppyn = g(x_pp, y_n, 0);
+			float gxpyn = g(x_p, y_n, 0);
+			float gxnyn = g(x_n, y_n, 0);
+			float gxnnyn = g(x_nn, y_n, 0);
+
+			float gx = ( gxnnyn + gxnnyp + 2 * (gxnyn + gxnny + gxnyp) + 4 * gxny ) - ( gxppyp + gxppyn + 2 * (gxppy + gxpyp + gxpyn) + 4 * gxpy );
+			gx /= 32;
+
+			float gxpypp = g(x_p, y_pp, 0);
+			//float gxpyp = g(x_p, y_p, 0);
+			//float gxpyn = g(x_p, y_n, 0);
+			float gxpynn = g(x_p, y_nn, 0);
+
+			float gxypp = g(x, y_pp, 0);
+			float gxyp = g(x, y_p, 0);
+			float gxyn = g(x, y_n, 0);
+			float gxynn = g(x, y_nn, 0);
+
+			float gxnypp = g(x_n, y_pp, 0);
+			//float gxnyp = g(x_n, y_p, 0);
+			//float gxnyn = g(x_n, y_n, 0);
+			float gxnynn = g(x_n, y_nn, 0);
+
+			float gy = ( gxnynn + gxpynn + 2 * (gxnyn + gxynn + gxpyn) + 4 * gxyn ) - ( gxpypp + gxnypp + 2 * (gxypp + gxpyp + gxnyp) + 4 * gxyp );
+			gy /= 32;
+
+			float mag = sqrt( gx * gx + gy * gy );
+			grad(x,y,0) = mag;
+			grad(x,y,1) = gx / mag;
+			grad(x,y,2) = gy / mag;
+
+			debugGrad(x,y,0,0) = mag;
+			debugGrad(x,y,0,1) = abs(gx);
+			debugGrad(x,y,0,2) = abs(gy);
+		}
+	}
+
+	debugGrad.save("gradient.bmp");
 
 	std::cout << "DEBUG: length of boundary = " << m_boundary->size() << std::endl;
 
@@ -251,11 +318,15 @@ void GradientWeightedInpainter::init(CImg<uchar> const * const _img)
 	std::cout << "Number of significant gradients = " << m_boundaryGrad.size() << std::endl;
 
 	// note which side each boundary coord is on
+	m_maxGrad = 0.f;
 	for ( uint i = 0; i < m_boundaryGrad.size(); ++i )
 	{
 		Coord coord = std::get<0>(m_boundaryGrad[i]);
+		float mag = std::get<1>(m_boundaryGrad[i]);
 		float nx = std::get<2>(m_boundaryGrad[i]);
 		float ny = std::get<3>(m_boundaryGrad[i]);
+
+		if ( mag > m_maxGrad ) m_maxGrad = mag;
 
 		std::vector<int> info(m_boundary->size());
 		for ( uint j = 0; j < m_boundary->size(); ++j )
@@ -273,10 +344,18 @@ void GradientWeightedInpainter::init(CImg<uchar> const * const _img)
 
 Color GradientWeightedInpainter::pixelColor(Coord _c)
 {
-	double r = 0;
-	double g = 0;
-	double b = 0;
-	double k = 0;
+	std::vector<float> ks(m_boundary->size(), 1.f);
+
+	for ( uint i = 0; i < m_boundary->size(); ++i )
+	{
+		Coord coord = (*m_boundary)[i].first;
+
+		float dx = _c.first - coord.first;
+		float dy = _c.second - coord.second;
+		float distSqrd = dx * dx + dy * dy;
+
+		ks[i] = 1.f / pow(distSqrd, m_pow); // closer pixels more heavily weighted
+	}
 
 	for ( uint j = 0; j < m_boundaryGrad.size(); ++j )
 	{
@@ -289,40 +368,38 @@ Color GradientWeightedInpainter::pixelColor(Coord _c)
 		float nx = std::get<2>(m_boundaryGrad[j]);
 		float ny = std::get<3>(m_boundaryGrad[j]);
 
-		float k_mag = pow(mag / 255.f, 0.1); // TODO: make this a parameter
-		float k_revMag = pow(1.f - mag / 255.f, 0.35); // TODO: make this a parameter
+		float k_atnuation = pow(1.f - mag / m_maxGrad, 10.f); // TODO: make this a parameter
 
 		float dot = dx * nx + dy * ny;
 		int s = (dot < 0 ? -1 : (dot > 0 ? 1 : 0));
 
 		for ( uint i = 0; i < m_boundary->size(); ++i )
 		{
-			Coord coord = (*m_boundary)[i].first;
-			Color c_i = (*m_boundary)[i].second;
-
-			float dx = _c.first - coord.first;
-			float dy = _c.second - coord.second;
-			float distSqrd = dx * dx + dy * dy;
-			float k_i = 1.f / pow(distSqrd, m_pow); // closer pixels more heavily weighted
-			k_i *= k_mag;
-
 			float s_i = m_boundarySides[j][i];
 
-			if ( s_i == s )
-			{
-				//r += k_i * float(c_i.r);
-				//g += k_i * float(c_i.g);
-				//b += k_i * float(c_i.b);
-				//k += k_i;
-				r += 255;
-			}
-			else
-			{
-				b += 255;
-			}
-			k += 1;
+			ks[i] *= ( s_i == s ) ? 1.f : k_atnuation;
 		}
 	}
+
+	double r = 0;
+	double g = 0;
+	double b = 0;
+	double k = 0;
+
+	for ( uint i = 0; i < m_boundary->size(); ++i )
+	{
+		Color c_i = (*m_boundary)[i].second;
+
+		float k_i = ks[i];
+
+		r += k_i * float(c_i.r);
+		g += k_i * float(c_i.g);
+		b += k_i * float(c_i.b);
+		k += k_i;
+
+		//std::cout<<"ks["<<i<<"] = "<<k_i<<", ";
+	}
+	//std::cout<<char(8)<<std::endl;
 
 	Color c;
 	c.r = uchar(r / k);
