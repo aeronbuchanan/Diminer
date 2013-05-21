@@ -1,20 +1,20 @@
 /*
  * Copyright, 2013, Aeron Buchanan
  *
- * This file is part of Diminutive, an digital inpainting resource.
+ * This file is part of Diminer, an digital inpainting resource.
  *
- * Diminutive is free software: you can redistribute it and/or modify
+ * Diminer is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * Diminutive is distributed in the hope that it will be useful,
+ * Diminer is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with Diminutive.  If not, see <http://www.gnu.org/licenses/>.
+ * along with Diminer.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include <iostream>
@@ -25,9 +25,9 @@
 
 int main(int argc, char** argv)
 {
-	std::cout << "Diminutive: Digital Image Inpainting by Aeron Buchanan" << std::endl;
+	std::cout << "Diminer: Digital Image Inpainting Resources by Aeron Buchanan" << std::endl;
 
-	cimg_usage("Usage: Diminutive [options] -i input -m mask\n");
+	cimg_usage("Usage: Diminer [options] -i input -m mask\n");
 
 	char const * imageFilename = cimg_option("-i", (char*)0, "image file to be inpainted");
 	char const * maskFilename = cimg_option("-m", (char*)0, "mask image denoting region to be inpainted (values > 127)");
