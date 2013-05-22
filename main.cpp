@@ -33,6 +33,8 @@ int main(int argc, char** argv)
 	char const * maskFilename = cimg_option("-m", (char*)0, "mask image denoting region to be inpainted (values > 127)");
 	char const * outputFilename = cimg_option("-o", (char*)0, "output filename");
 	uint inpaintingFunc = cimg_option("-f", 0, "0 = bleed; 1 = weighted; 2 = gradient-weighted");
+	float jitter = cimg_option("-j", 0.35, "jitter between 0.f and 1.f (");
+	float smoothness = cimg_option("-s", 2.f, "smoothness");
 
 	if ( !imageFilename )
 	{
@@ -154,7 +156,7 @@ int main(int argc, char** argv)
 			inpainters.push_back(new WeightedInpainter(&boundaries[i]));
 			break;
 		case 2:
-			inpainters.push_back(new GradientWeightedInpainter(&boundaries[i], &image, maskOrig));
+			inpainters.push_back(new GradientWeightedInpainter(&boundaries[i], &image, maskOrig, smoothness, jitter));
 			break;
 		default:
 			inpainters.push_back(new BleedInpainter(&boundaries[i]));

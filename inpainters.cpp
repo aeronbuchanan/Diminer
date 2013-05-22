@@ -110,7 +110,7 @@ void GradientWeightedInpainter::init(CImg<uchar> const * const _img, CImg<uchar>
 	(like an extended Sobel kernel)
 */
 
-	// TODO: take note of mask
+	// TODO: only calculate for boundary
 	// TODO: optimize recalculations
 	for ( int y = 0; y < g.height(); ++y )
 	{
@@ -361,14 +361,14 @@ Color GradientWeightedInpainter::pixelColor(Coord _c)
 
 		float k_i = std::max(ks[i], std::numeric_limits<float>::min());
 
-		r += k_i * float(c_i.r);
-		g += k_i * float(c_i.g);
-		b += k_i * float(c_i.b);
-		k += k_i;
-
-		//std::cout<<"ks["<<i<<"] = "<<k_i<<", ";
+		if ( rand() % 100 >= m_jitter ) // TODO: make this a parameter
+		{
+			r += k_i * float(c_i.r);
+			g += k_i * float(c_i.g);
+			b += k_i * float(c_i.b);
+			k += k_i;
+		}
 	}
-	//std::cout<<char(8)<<std::endl;
 
 	Color c;
 	c.r = uchar(r / k);
