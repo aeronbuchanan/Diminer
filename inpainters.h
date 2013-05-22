@@ -58,20 +58,16 @@ private:
 class GradientWeightedInpainter : public Inpainter
 {
 public:
-	GradientWeightedInpainter(BoundaryColors const * const _b, CImg<uchar> const * const _img, float _pow = 2.f) : Inpainter(_b), m_pow(_pow) { init(_img); }
-	GradientWeightedInpainter(BoundaryColors const * const _b, CImg<uchar> const * const _img, AnimDisp * const _a) : Inpainter(_b), debugDisp(_a), m_pow(2.f) { init(_img); }
+	GradientWeightedInpainter(BoundaryColors const * const _b, CImg<uchar> const * const _img, CImg<uchar> const * const _mask, float _pow = 2.f) : Inpainter(_b), m_pow(_pow) { init(_img, _mask); }
 
 	Color pixelColor(Coord _c);
 
 private:
-	void init(CImg<uchar> const * const _img);
+	void init(CImg<uchar> const * const _img, CImg<uchar> const * const _mask);
 
 	std::vector<std::vector<int> > m_boundarySides;
 	BoundaryGrads m_boundaryGrad;
 	float m_maxGrad;
 	float m_pow;
-
-	AnimDisp * debugDisp; // DEBUG
-
 };
 

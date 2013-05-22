@@ -27,14 +27,14 @@ int main(int argc, char** argv)
 {
 	std::cout << "Diminer: Digital Image Inpainting Resources by Aeron Buchanan" << std::endl;
 
-	cimg_usage("Usage: Diminer [options] -i input -m mask\n");
+	cimg_usage("Usage: Diminer [options] -i input\n");
 
 	char const * imageFilename = cimg_option("-i", (char*)0, "image file to be inpainted");
 	char const * maskFilename = cimg_option("-m", (char*)0, "mask image denoting region to be inpainted (values > 127)");
 	char const * outputFilename = cimg_option("-o", (char*)0, "output filename");
 	uint inpaintingFunc = cimg_option("-f", 0, "0 = bleed; 1 = weighted; 2 = gradient-weighted");
 
-	if ( !imageFilename || !maskFilename )
+	if ( !imageFilename )
 	{
 		std::exit(0);
 	}
@@ -47,13 +47,36 @@ int main(int argc, char** argv)
 	}
 
 	CImg<uchar> image(imageFilename);
-	CImg<uchar> mask(maskFilename);
+	CImg<uchar> mask;
+	if ( maskFilename)
+	{
+		mask.load(maskFilename);
+	}
+	else
+	{
+		mask.assign(image.width(),image.height(),1,1);
+		cimg_forXY(image,x,y)
+		{
+			Color c;
+			c.r = image(x,y,0,0);
+			c.g = image(x,y,0,1);
+			c.b = image(x,y,0,2);
+			mask(x,y) = imgMaskTest(c) ? 255 : 0;
+		}
+	}
+
 	CImg<uchar> regions(image.width(), image.height(), 1, 1, 0); // TODO: float matrix
+
+	CImg<uchar> * maskOrig;
 
 	if ( inpaintingFunc == 2 )
 	{
 		// TODO: this is a hack to overcome gradient being taken without respect to boundary
-		uint r = 1;
+		maskOrig = new CImg<uchar>(regions);
+		cimg_forXY(mask,x,y)
+			(*maskOrig)(x,y) = maskTest(mask(x,y));
+
+		uint r = 2;
 		mask.dilate(r * 2 + 1);
 	}
 
@@ -63,10 +86,7 @@ int main(int argc, char** argv)
 
 	// fill regions
 	FillHelper filler(&mask, &regions);
-#ifdef DEBUG
-	AnimDisp debugDisp(&regions_disp);
-	filler.setDebug(&debugDisp);
-#endif
+
 	int count = 0;
 	cimg_forXY(mask,x,y)
 	{
@@ -83,7 +103,7 @@ int main(int argc, char** argv)
 	//CImgDisplay regions_disp(regions,"Regions");
 
 	// Find region 4-boundaries
-	std::vector<BoundaryColors> Boundaries;
+	std::vector<BoundaryColors> boundaries;
 	int W = regions.width() - 1;
 	int H = regions.height() - 1;
 	for ( int i = 0; i < count; ++i )
@@ -110,34 +130,44 @@ int main(int argc, char** argv)
 				}
 			}
 		}
-		Boundaries.push_back(cs);
+		boundaries.push_back(cs);
 	}
+
+	std::cout << "Calculated boundaries." << std::endl;
 
 #if 1 // DEBUG
 		CImgDisplay debug_disp(image, "Debug");
+		CImgDisplay maskorig_disp(mask,"Mask");
 		AnimDisp debugDisp(&debug_disp);
 #endif
 
 	// Inpainting
 	std::vector<Inpainter*> inpainters;
-	for ( uint i = 0; i < Boundaries.size(); ++i )
+	for ( uint i = 0; i < boundaries.size(); ++i )
 	{
 		switch ( inpaintingFunc )
 		{
 		case 0:
-			inpainters.push_back(new BleedInpainter(&Boundaries[i]));
+			inpainters.push_back(new BleedInpainter(&boundaries[i]));
 			break;
 		case 1:
-			inpainters.push_back(new WeightedInpainter(&Boundaries[i]));
+			inpainters.push_back(new WeightedInpainter(&boundaries[i]));
 			break;
 		case 2:
-			inpainters.push_back(new GradientWeightedInpainter(&Boundaries[i], &image));
-			//inpainters.push_back(new GradientWeightedInpainter(&Boundaries[i], &image, &debugDisp));
+			inpainters.push_back(new GradientWeightedInpainter(&boundaries[i], &image, maskOrig));
 			break;
 		default:
-			inpainters.push_back(new BleedInpainter(&Boundaries[i]));
+			inpainters.push_back(new BleedInpainter(&boundaries[i]));
 		}
 	}
+
+	std::cout << "Created inpainters." << std::endl;
+
+	float i = 0;
+	float i_total = regions.width() * regions.height();
+	std::cout << "Inpainting: ";
+
+	// TODO: allow 'blend mode' where mask value is a blend coefficient
 
 	cimg_forXY(regions,x,y)
 	{
@@ -151,25 +181,14 @@ int main(int argc, char** argv)
 			image(x,y,0,1) = c.g;
 			image(x,y,0,2) = c.b;
 		}
+
+		printf("% 6.0f%% ", 100 * i++ / (i_total - 1));
+		for ( uint j = 0; j < 8; ++j ) printf("%c", 8);
 	}
+
+	std::cout << "complete." << std::endl;
 
 	CImgDisplay output_disp(image,"Inpainted Original");
-
-	// Display boundaries
-	for ( uint i = 0; i < Boundaries.size(); ++i )
-	{
-		for ( uint j = 0; j < Boundaries[i].size(); ++j )
-		{
-			CoordCol c = Boundaries[i][j];
-			int x = c.first.first;
-			int y = c.first.second;
-			mask(x,y,0,0) = c.second.r;
-			mask(x,y,0,1) = c.second.g;
-			mask(x,y,0,2) = c.second.b;
-		}
-	}
-
-	CImgDisplay mask_disp(mask,"Boundaries on Mask");
 
 	if ( outputFilename )
 	{

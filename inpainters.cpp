@@ -82,9 +82,10 @@ Color WeightedInpainter::pixelColor(Coord _c)
 	return c;
 }
 
-void GradientWeightedInpainter::init(CImg<uchar> const * const _img)
+void GradientWeightedInpainter::init(CImg<uchar> const * const _img, CImg<uchar> const * const _mask)
 {
 	CImg<uchar> img(*_img);
+	CImg<uchar> mask(*_mask);
 
 	// greyscale
 	CImg<float> g(img.width(), img.height(), 1, 1, 0.f);
@@ -125,38 +126,38 @@ void GradientWeightedInpainter::init(CImg<uchar> const * const _img)
 			int x_n = std::min( g.width() - 1, x + 1);
 			int x_nn = std::min( g.width() - 1, x + 2);
 
-			float gxppyp = g(x_pp, y_p, 0);
-			float gxpyp = g(x_p, y_p, 0);
-			float gxnyp = g(x_n, y_p, 0);
-			float gxnnyp = g(x_nn, y_p, 0);
+			float gxppyp = mask(x_pp, y_p) ? g(x,y) : g(x_pp, y_p);
+			float gxpyp = mask(x_p, y_p) ? g(x,y) : g(x_p, y_p);
+			float gxnyp = mask(x_n, y_p) ? g(x,y) : g(x_n, y_p);
+			float gxnnyp = mask(x_nn, y_p) ? g(x,y) : g(x_nn, y_p);
 
-			float gxppy = g(x_pp, y, 0);
-			float gxpy = g(x_p, y, 0);
-			float gxny = g(x_n, y, 0);
-			float gxnny = g(x_nn, y, 0);
+			float gxppy = mask(x_pp, y) ? g(x,y) : g(x_pp, y);
+			float gxpy = mask(x_p, y) ? g(x,y) : g(x_p, y);
+			float gxny = mask(x_n, y) ? g(x,y) : g(x_n, y);
+			float gxnny = mask(x_nn, y) ? g(x,y) : g(x_nn, y);
 
-			float gxppyn = g(x_pp, y_n, 0);
-			float gxpyn = g(x_p, y_n, 0);
-			float gxnyn = g(x_n, y_n, 0);
-			float gxnnyn = g(x_nn, y_n, 0);
+			float gxppyn = mask(x_pp, y_n) ? g(x,y) : g(x_pp, y_n);
+			float gxpyn = mask(x_p, y_n) ? g(x,y) : g(x_p, y_n);
+			float gxnyn = mask(x_n, y_n) ? g(x,y) : g(x_n, y_n);
+			float gxnnyn = mask(x_nn, y_n) ? g(x,y) : g(x_nn, y_n);
 
 			float gx = ( gxnnyn + gxnnyp + 2 * (gxnyn + gxnny + gxnyp) + 4 * gxny ) - ( gxppyp + gxppyn + 2 * (gxppy + gxpyp + gxpyn) + 4 * gxpy );
 			gx /= 32;
 
-			float gxpypp = g(x_p, y_pp, 0);
-			//float gxpyp = g(x_p, y_p, 0);
-			//float gxpyn = g(x_p, y_n, 0);
-			float gxpynn = g(x_p, y_nn, 0);
+			float gxpypp = mask(x_p, y_pp) ? g(x,y) : g(x_p, y_pp, 0);
+			//float gxpyp;
+			//float gxpyn;
+			float gxpynn = mask(x_p, y_nn) ? g(x,y) : g(x_p, y_nn, 0);
 
-			float gxypp = g(x, y_pp, 0);
-			float gxyp = g(x, y_p, 0);
-			float gxyn = g(x, y_n, 0);
-			float gxynn = g(x, y_nn, 0);
+			float gxypp = mask(x, y_pp) ? g(x,y) : g(x, y_pp, 0);
+			float gxyp = mask(x, y_p) ? g(x,y) : g(x, y_p, 0);
+			float gxyn = mask(x, y_n) ? g(x,y) : g(x, y_n, 0);
+			float gxynn = mask(x, y_nn) ? g(x,y) : g(x, y_nn, 0);
 
-			float gxnypp = g(x_n, y_pp, 0);
-			//float gxnyp = g(x_n, y_p, 0);
-			//float gxnyn = g(x_n, y_n, 0);
-			float gxnynn = g(x_n, y_nn, 0);
+			float gxnypp = mask(x_n, y_pp) ? g(x,y) : g(x_n, y_pp, 0);
+			//float gxnyp;
+			//float gxnyn;
+			float gxnynn = mask(x_n, y_nn) ? g(x,y) : g(x_n, y_nn, 0);
 
 			float gy = ( gxnynn + gxpynn + 2 * (gxnyn + gxynn + gxpyn) + 4 * gxyn ) - ( gxpypp + gxnypp + 2 * (gxypp + gxpyp + gxnyp) + 4 * gxyp );
 			gy /= 32;
@@ -175,20 +176,6 @@ void GradientWeightedInpainter::init(CImg<uchar> const * const _img)
 	debugGrad.save("gradient.bmp");
 
 	std::cout << "DEBUG: length of boundary = " << m_boundary->size() << std::endl;
-
-#ifdef DEBUGIMG
-	CImg<uchar> debugImg(img.width(), img.height(), 1, 3, 0.f);
-	for ( uint i = 0; i < m_boundary->size(); ++i )
-	{
-		Coord c = (*m_boundary)[i].first;
-		float x = c.first;
-		float y = c.second;
-		debugImg(x,y,0,0) = 255;
-		debugImg(x,y,0,1) = 255;
-		debugImg(x,y,0,2) = 255;
-	}
-	debugDisp->update(&debugImg);
-#endif
 
 	// chain boundary coords in order
 	std::vector<bool> chained(m_boundary->size(), false);
@@ -224,15 +211,6 @@ void GradientWeightedInpainter::init(CImg<uchar> const * const _img)
 					jDirection = ( j > last_j ? 1 : -1 );
 					last_j = j;
 
-#ifdef DEBUGIMG
-					int xx = chainedBoundary.back().first;
-					int yy = chainedBoundary.back().second;
-					debugImg(xx,yy,0,0) = 0;
-					debugImg(xx,yy,0,1) = 0;
-					debugImg(xx,yy,0,2) = 255;
-					//debugDisp->update(&debugImg);
-#endif
-
 					//std::cout << "added(" << diag_j << ") " << std::endl;
 				}
 				else
@@ -261,15 +239,6 @@ void GradientWeightedInpainter::init(CImg<uchar> const * const _img)
 						nextFound = true;
 						jDirection = ( j > last_j ? 1 : -1 );
 						last_j = j;
-
-#ifdef DEBUGIMG
-						int xx = chainedBoundary.back().first;
-						int yy = chainedBoundary.back().second;
-						debugImg(xx,yy,0,0) = 0;
-						debugImg(xx,yy,0,1) = 0;
-						debugImg(xx,yy,0,2) = 255;
-						//debugDisp->update(&debugImg);
-#endif
 
 						//std::cout << "added(" << j << ")" << std::endl;
 					}
@@ -368,7 +337,7 @@ Color GradientWeightedInpainter::pixelColor(Coord _c)
 		float nx = std::get<2>(m_boundaryGrad[j]);
 		float ny = std::get<3>(m_boundaryGrad[j]);
 
-		float k_atnuation = pow(1.f - mag / m_maxGrad, 10.f); // TODO: make this a parameter
+		float k_atnuation = pow(1.f - mag / m_maxGrad, 2.f); // TODO: make this a parameter
 
 		float dot = dx * nx + dy * ny;
 		int s = (dot < 0 ? -1 : (dot > 0 ? 1 : 0));
@@ -390,7 +359,7 @@ Color GradientWeightedInpainter::pixelColor(Coord _c)
 	{
 		Color c_i = (*m_boundary)[i].second;
 
-		float k_i = ks[i];
+		float k_i = std::max(ks[i], std::numeric_limits<float>::min());
 
 		r += k_i * float(c_i.r);
 		g += k_i * float(c_i.g);

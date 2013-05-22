@@ -25,6 +25,8 @@
 #include "CImg.h"
 using namespace cimg_library;
 
+// TODO: Diminer namespace
+
 typedef unsigned char uchar;
 typedef unsigned int uint;
 
@@ -53,6 +55,9 @@ public:
 	CImgDisplay* m_disp;
 };
 
+static bool maskTest(uchar _v) { return _v > 127; } // Humph
+static bool imgMaskTest(Color _c) { return _c.r <= 1 && _c.g <= 1 && _c.b >= 254; } // Humph
+
 class FillHelper
 {
 public:
@@ -60,16 +65,10 @@ public:
 
 	void fill( Coord _xy, uchar col)
 	{
-#ifdef DEBUG
-		std::cout << "DEBUG: starting fill." << std::endl;
-#endif
 		m_stack.clear();
 
 		// start fill
 		m_stack.push_back(_xy);
-#ifdef DEBUG
-		std::cout << "DEBUG: *pushed ("<<_xy.first<<","<<_xy.second<<")" << std::endl;
-#endif
 		while ( !m_stack.empty() )
 		{
 			Coord foc = m_stack.back();
@@ -77,16 +76,8 @@ public:
 			int fx = foc.first;
 			int fy = foc.second;
 
-#ifdef DEBUG
-			std::cout << "DEBUG: popped ("<<fx<<","<<fy<<")" << std::endl;
-#endif
-
 			// mark
 			(*m_tgt)(fx,fy) = col;
-#ifdef DEBUG
-			std::cout << "DEBUG: marked ("<<fx<<","<<fy<<")" << std::endl;
-			if ( m_debug ) m_debug->update(m_tgt);
-#endif
 
 			// scan
 			bool ffup = lookUp(fx, fy, false);
@@ -99,10 +90,6 @@ public:
 			while ( --nx > 0 && maskTest((*m_src)(nx,fy)) && (*m_tgt)(nx,fy) == 0 )
 			{
 				(*m_tgt)(nx,fy) = col;
-#ifdef DEBUG
-				std::cout << "DEBUG: marked ("<<nx<<","<<fy<<")" << std::endl;
-				if ( m_debug ) m_debug->update(m_tgt);
-#endif
 
 				fup = lookUp(nx, fy, fup);
 				fwn = lookDown(nx, fy, fwn);
@@ -115,10 +102,6 @@ public:
 			while ( ++nx < m_src->width() && maskTest((*m_src)(nx,fy)) && (*m_tgt)(nx,fy) == 0 )
 			{
 				(*m_tgt)(nx,fy) = col;
-#ifdef DEBUG
-				std::cout << "DEBUG: marked ("<<nx<<","<<fy<<")" << std::endl;
-				if ( m_debug ) m_debug->update(m_tgt);
-#endif
 
 				fup = lookUp(nx, fy, fup);
 				fwn = lookDown(nx, fy, fwn);
@@ -126,28 +109,18 @@ public:
 		}
 	}
 
-#ifdef DEBUG
-	void setDebug(AnimDisp * const _db) { m_debug = _db; }
-#endif
-
 private:
 	bool lookUp(int _x, int _y, bool _b) { if ( _y > 0 ) _b = inspect(_x, --_y, _b); return _b;	}
 	bool lookDown(int _x, int _y, bool _b) { if ( _y < m_src->height() - 1 ) _b = inspect(_x, ++_y, _b); return _b; }
 
 	bool inspect(int _x, int _y, bool _b)
 	{
-#ifdef DEBUG
-		std::cout << "DEBUG: considering (" << _x << "," << _y <<") [" << int((*m_src)(_x, _y)) << "==255] [" << int((*m_tgt)(_x, _y)) << "==0] [" << _b << "==false]" << std::endl;
-#endif
 		if ( maskTest((*m_src)(_x, _y)) && (*m_tgt)(_x, _y) == 0 )
 		{
 			if ( !_b )
 			{
 				_b = true;
 				m_stack.push_back(Coord(_x, _y));
-#ifdef DEBUG
-				std::cout << "DEBUG: pushed ("<<_x<<","<<_y<<")" << std::endl;
-#endif
 			}
 		}
 		else
@@ -157,13 +130,7 @@ private:
 		return _b;
 	}
 
-	bool maskTest(uchar _v) { return _v > 127; } // Humph
-
 	CImg<uchar> const * m_src;
 	CImg<uchar> * m_tgt;
 	Coords m_stack;
-
-#ifdef DEBUG
-	AnimDisp * m_debug;
-#endif
 };
