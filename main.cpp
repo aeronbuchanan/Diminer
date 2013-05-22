@@ -32,9 +32,11 @@ int main(int argc, char** argv)
 	char const * imageFilename = cimg_option("-i", (char*)0, "image file to be inpainted");
 	char const * maskFilename = cimg_option("-m", (char*)0, "mask image denoting region to be inpainted (values > 127)");
 	char const * outputFilename = cimg_option("-o", (char*)0, "output filename");
-	uint inpaintingFunc = cimg_option("-f", 0, "0 = bleed; 1 = weighted; 2 = gradient-weighted");
-	float jitter = cimg_option("-j", 0.35, "jitter between 0.f and 1.f (");
+	uint inpaintingFunc = cimg_option("-f", 2, "0 = bleed; 1 = weighted; 2 = gradient-weighted");
+	float jitter = cimg_option("-j", 0.35, "jitter between 0.f and 1.f");
 	float smoothness = cimg_option("-s", 2.f, "smoothness");
+	int dilation = cimg_option("-r", 0, "mask dilation radius");
+	bool display = cimg_option("-D", 0, "display");
 
 	if ( !imageFilename )
 	{
@@ -71,18 +73,19 @@ int main(int argc, char** argv)
 
 	CImg<uchar> * maskOrig;
 
-	if ( inpaintingFunc == 2 )
+	if ( !dilation && inpaintingFunc == 2 )
+	{
+		dilation = 2;
+	}
+	if ( dilation )
 	{
 		// TODO: this is a hack to overcome gradient being taken without respect to boundary
 		maskOrig = new CImg<uchar>(regions);
 		cimg_forXY(mask,x,y)
 			(*maskOrig)(x,y) = maskTest(mask(x,y));
 
-		uint r = 2;
-		mask.dilate(r * 2 + 1);
+		mask.dilate(dilation * 2 + 1);
 	}
-
-	//CImgDisplay main_disp(mask, "Original Mask");
 
 	//*** detect connected regions ***//
 
@@ -102,12 +105,16 @@ int main(int argc, char** argv)
 
 	std::cout << "Found " << count << " regions." << std::endl;
 
-	//CImgDisplay regions_disp(regions,"Regions");
-
 	// Find region 4-boundaries
 	std::vector<BoundaryColors> boundaries;
 	int W = regions.width() - 1;
 	int H = regions.height() - 1;
+
+	int x_min = W;
+	int x_max = 0;
+	int y_min = H;
+	int y_max = 0;
+
 	for ( int i = 0; i < count; ++i )
 	{
 		BoundaryColors cs;
@@ -129,6 +136,11 @@ int main(int argc, char** argv)
 					color.g = image(x,y,0,1);
 					color.b = image(x,y,0,2);
 					cs.push_back(CoordCol(Coord(x, y), color));
+
+					if ( x < x_min ) x_min = x;
+					if ( x > x_max ) x_max = x;
+					if ( y < y_min ) y_min = y;
+					if ( y > y_max ) y_max = y;
 				}
 			}
 		}
@@ -137,11 +149,11 @@ int main(int argc, char** argv)
 
 	std::cout << "Calculated boundaries." << std::endl;
 
-#if 1 // DEBUG
+	if ( display )
+	{
+		CImgDisplay mask_disp(mask,"Mask");
 		CImgDisplay debug_disp(image, "Debug");
-		CImgDisplay maskorig_disp(mask,"Mask");
-		AnimDisp debugDisp(&debug_disp);
-#endif
+	}
 
 	// Inpainting
 	std::vector<Inpainter*> inpainters;
@@ -156,7 +168,7 @@ int main(int argc, char** argv)
 			inpainters.push_back(new WeightedInpainter(&boundaries[i]));
 			break;
 		case 2:
-			inpainters.push_back(new GradientWeightedInpainter(&boundaries[i], &image, maskOrig, smoothness, jitter));
+			inpainters.push_back(new GradientWeightedInpainter(&boundaries[i], &image, maskOrig, smoothness, jitter, dilation));
 			break;
 		default:
 			inpainters.push_back(new BleedInpainter(&boundaries[i]));
@@ -166,31 +178,32 @@ int main(int argc, char** argv)
 	std::cout << "Created inpainters." << std::endl;
 
 	float i = 0;
-	float i_total = regions.width() * regions.height();
+	float i_total = (x_max - x_min + 1) * (y_max - y_min + 1);
 	std::cout << "Inpainting: ";
 
 	// TODO: allow 'blend mode' where mask value is a blend coefficient
 
-	cimg_forXY(regions,x,y)
+	for ( uint y = y_min; y <= y_max; ++y)
 	{
-		if ( regions(x,y) > 0 )
+		for ( uint x = x_min; x <= x_max; ++x)
 		{
-			// process associated boundary
-			uint r = regions(x,y) - 1;
-			// TODO: check r is within bounds
-			Color c = inpainters[r]->pixelColor(Coord(x, y));
-			image(x,y,0,0) = c.r;
-			image(x,y,0,1) = c.g;
-			image(x,y,0,2) = c.b;
-		}
+			if ( regions(x,y) > 0 )
+			{
+				// process associated boundary
+				uint r = regions(x,y) - 1;
+				// TODO: check r is within bounds
+				Color c = inpainters[r]->pixelColor(Coord(x, y));
+				image(x,y,0,0) = c.r;
+				image(x,y,0,1) = c.g;
+				image(x,y,0,2) = c.b;
+			}
 
-		printf("% 6.0f%% ", 100 * i++ / (i_total - 1));
-		for ( uint j = 0; j < 8; ++j ) printf("%c", 8);
+			printf("% 6.0f%% ", 100 * i++ / (i_total - 1));
+			for ( uint j = 0; j < 8; ++j ) printf("%c", 8);
+		}
 	}
 
 	std::cout << "complete." << std::endl;
-
-	CImgDisplay output_disp(image,"Inpainted Original");
 
 	if ( outputFilename )
 	{
@@ -198,9 +211,13 @@ int main(int argc, char** argv)
 		mask.save("mask_with_boundary.png");
 	}
 
-	while ( !output_disp.is_closed() )
+	if ( display )
 	{
-		output_disp.wait(1000);
+		CImgDisplay output_disp(image,"Inpainted Original");
+		while ( !output_disp.is_closed() )
+		{
+			output_disp.wait(1000);
+		}
 	}
 
 	return 0;

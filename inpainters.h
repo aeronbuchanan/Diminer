@@ -58,7 +58,7 @@ private:
 class GradientWeightedInpainter : public Inpainter
 {
 public:
-	GradientWeightedInpainter(BoundaryColors const * const _b, CImg<uchar> const * const _img, CImg<uchar> const * const _mask, float _pow = 2.f, float _jitter = 0.35) : Inpainter(_b), m_pow(_pow), m_jitter(100 * _jitter) { init(_img, _mask); }
+	GradientWeightedInpainter(BoundaryColors const * const _b, CImg<uchar> const * const _img, CImg<uchar> const * const _mask, float _pow = 2.f, float _jitter = 0.35, int _dilation = 2) : Inpainter(_b), m_pow(_pow), m_jitter(100 * _jitter) { init(_img, _mask); }
 
 	Color pixelColor(Coord _c);
 
