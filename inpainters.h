@@ -1,7 +1,7 @@
 /*
  * Copyright, 2013, Aeron Buchanan
  *
- * This file is part of Diminer, an digital inpainting resource.
+ * This file is part of Diminer, a digital inpainting resource.
  *
  * Diminer is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by

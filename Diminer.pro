@@ -13,5 +13,8 @@ SOURCES += main.cpp \
 
 HEADERS += \
     inpainters.h \
-    common.h
+    common.h \
+    patch.h \
+    texSynth.h \
+    texSynth.hpp
 

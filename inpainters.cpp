@@ -1,7 +1,7 @@
 /*
  * Copyright, 2013, Aeron Buchanan
  *
- * This file is part of Diminer, an digital inpainting resource.
+ * This file is part of Diminer, a digital inpainting resource.
  *
  * Diminer is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -337,7 +337,7 @@ Color GradientWeightedInpainter::pixelColor(Coord _c)
 		float nx = std::get<2>(m_boundaryGrad[j]);
 		float ny = std::get<3>(m_boundaryGrad[j]);
 
-		float k_atnuation = pow(1.f - mag / m_maxGrad, 2.f); // TODO: make this a parameter
+		float k_atnuation = pow(1.f - mag / m_maxGrad, 2.f);
 
 		float dot = dx * nx + dy * ny;
 		int s = (dot < 0 ? -1 : (dot > 0 ? 1 : 0));
@@ -361,7 +361,7 @@ Color GradientWeightedInpainter::pixelColor(Coord _c)
 
 		float k_i = std::max(ks[i], std::numeric_limits<float>::min());
 
-		if ( rand() % 100 >= m_jitter ) // TODO: make this a parameter
+		if ( rand() % 100 >= m_jitter )
 		{
 			r += k_i * float(c_i.r);
 			g += k_i * float(c_i.g);

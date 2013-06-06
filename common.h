@@ -1,7 +1,7 @@
 /*
  * Copyright, 2013, Aeron Buchanan
  *
- * This file is part of Diminer, an digital inpainting resource.
+ * This file is part of Diminer, a digital inpainting resource.
  *
  * Diminer is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -55,9 +55,10 @@ public:
 	CImgDisplay* m_disp;
 };
 
-static bool maskTest(uchar _v) { return _v > 127; } // Humph
-static bool imgMaskTest(Color _c) { return _c.r <= 1 && _c.g <= 1 && _c.b >= 254; }
-//static bool imgMaskTest(Color _c) { return _c.r >= 254 && _c.g >= 87 && _c.g <= 98 && _c.b <= 1; }
+// TODO: formalize following
+bool maskTest(uchar _v) { return _v > 127; } // Humph
+bool imgMaskTest(Color _c) { return _c.r <= 1 && _c.g <= 1 && _c.b >= 254; }
+//bool imgMaskTest(Color _c) { return _c.r >= 254 && _c.g >= 87 && _c.g <= 98 && _c.b <= 1; }
 
 class FillHelper
 {
