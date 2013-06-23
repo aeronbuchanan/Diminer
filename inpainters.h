@@ -22,7 +22,7 @@
 #include <math.h>
 #include <limits>
 
-#include "common.h"
+#include "patch.h"
 
 class Inpainter
 {

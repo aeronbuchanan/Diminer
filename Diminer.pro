@@ -13,8 +13,12 @@ SOURCES += main.cpp \
 
 HEADERS += \
     inpainters.h \
-    common.h \
+    patch.h \
     patch.h \
     texSynth.h \
-    texSynth.hpp
+    texSynth.hpp \
+    vecn.h \
+    table.h \
+    common.h \
+    circularSeam.h
 

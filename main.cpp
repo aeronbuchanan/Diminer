@@ -19,7 +19,7 @@
 
 #include <iostream>
 
-#include "common.h"
+#include "patch.h"
 #include "inpainters.h"
 
 
