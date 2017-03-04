@@ -6,7 +6,7 @@ CONFIG += thread
 
 QMAKE_CXXFLAGS += -std=c++11
 
-INCLUDEPATH += "../../CImg-1.5.4/"
+INCLUDEPATH += "../CImg/"
 
 SOURCES += main.cpp \
     inpainters.cpp
