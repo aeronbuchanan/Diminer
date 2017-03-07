@@ -39,7 +39,7 @@ int main(int argc, char** argv)
 	float smoothness = cimg_option("-s", 2.f, "smoothness");
 	int dilation = cimg_option("-r", 0, "mask dilation radius");
 	bool display = cimg_option("-D", 0, "display");
-        bool limitFilling = cimg_option("-L", 1, "limit filling to max extent of image area");
+        bool limitFilling = cimg_option("-L", 0, "limit filling to max extent of image area: 0 = full image; 1 = limited");
 
 	if ( !imageFilename )
 	{
@@ -130,10 +130,10 @@ int main(int argc, char** argv)
 	int W = regions.width() - 1;
 	int H = regions.height() - 1;
 
-	int x_min = W;
-	int x_max = 0;
-	int y_min = H;
-	int y_max = 0;
+	int x_min = limitFilling ? W : 0;
+	int x_max = limitFilling ? 0 : W;
+	int y_min = limitFilling ? H : 0;
+	int y_max = limitFilling ? 0 : H;
 
 	for ( int i = 0; i < count; ++i )
 	{
@@ -156,8 +156,8 @@ int main(int argc, char** argv)
 					color.b = image(x,y,0,2);
 					cs.push_back(CoordCol(Coord(x, y), color));
 
-                                        if ( limitFilling )
-                                        {
+					if ( limitFilling )
+					{
 						if ( x < x_min ) x_min = x;
 						if ( x > x_max ) x_max = x;
 						if ( y < y_min ) y_min = y;
