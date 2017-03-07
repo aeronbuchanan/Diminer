@@ -186,7 +186,7 @@ void GradientWeightedInpainter::init(CImg<uchar> const * const _img, CImg<uchar>
 	Coords chainedBoundary;
 	chainedBoundary.push_back((*m_boundary)[0].first);
 	chained[0] = true;
-	uint last_j = 0;
+	int last_j = 0;
 	int j = 1;
 	int jDirection = ( j > last_j ? 1 : -1 );
 	for ( uint i = 1; i < m_boundary->size(); ++i )
