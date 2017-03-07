@@ -81,7 +81,7 @@ int main(int argc, char** argv)
 
 	if ( !dilation && inpaintingFunc == 2 )
 	{
-		dilation = 1;
+		dilation = 2;
 	}
 	if ( dilation )
 	{
