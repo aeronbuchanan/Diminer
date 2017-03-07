@@ -19,9 +19,11 @@
 
 #include <iostream>
 
+#include "diminer.h"
 #include "patch.h"
 #include "inpainters.h"
 
+using namespace Diminer;
 
 int main(int argc, char** argv)
 {
@@ -52,7 +54,7 @@ int main(int argc, char** argv)
 
 	CImg<uchar> image(imageFilename);
 	CImg<uchar> mask;
-	if ( maskFilename)
+	if (maskFilename)
 	{
 		mask.load(maskFilename);
 	}
@@ -65,11 +67,9 @@ int main(int argc, char** argv)
 			c.r = image(x,y,0,0);
 			c.g = image(x,y,0,1);
 			c.b = image(x,y,0,2);
-			mask(x,y) = imgMaskTest(c) ? 255 : 0;
+			mask(x,y) = imgMaskTest(c) ? IS_MASKED : IS_NOT_MASKED; // TODO: use alpha channel if available
 		}
 	}
-
-	CImg<uchar> regions(image.width(), image.height(), 1, 1, 0); // TODO: float matrix
 
 	CImg<uchar> * maskOrig;
 
@@ -80,26 +80,22 @@ int main(int argc, char** argv)
 	if ( dilation )
 	{
 		// TODO: this is a hack to overcome gradient being taken without respect to boundary
-		maskOrig = new CImg<uchar>(regions);
-		cimg_forXY(mask,x,y)
-			(*maskOrig)(x,y) = maskTest(mask(x,y));
-
+		maskOrig = new CImg<uchar>(mask);
 		mask.dilate(dilation * 2 + 1);
 	}
 
 	//*** detect connected regions ***//
-
-	// fill regions
-	FillHelper filler(&mask, &regions);
+	CImg<uchar> regions(mask); // TODO: float matrix
 
 	int count = 0;
 	cimg_forXY(mask,x,y)
 	{
-		if ( mask(x,y) == 255 && regions(x,y) == 0 )
+		if ( regions(x,y) == IS_MASKED )
 		{
-			++count;
+			++count; // TODO: deal with any number of regions
+                        if ( count == IS_MASKED ) { std::cerr << "ERROR: too many mask regions" << std::endl; return 1; }
 			uchar col = count; // 255 / count;
-			filler.fill(Coord(x,y), col);
+                        regions.draw_fill(x, y, &col);
 		}
 	}
 
@@ -118,9 +114,8 @@ int main(int argc, char** argv)
 	for ( int i = 0; i < count; ++i )
 	{
 		BoundaryColors cs;
-		int count = i + 1;
-		uchar col = count; // 255 / count;
-		cimg_forXY(regions,x,y)
+		uchar col = i + 1; // 255 / count;
+		cimg_forXY(regions, x, y)
 		{
 			if ( regions(x,y) == 0 )
 			{
@@ -151,8 +146,8 @@ int main(int argc, char** argv)
 
 	if ( display )
 	{
-		CImgDisplay mask_disp(mask,"Mask");
-		CImgDisplay debug_disp(image, "Debug");
+		cimg_library::CImgDisplay mask_disp(mask,"Mask");
+		cimg_library::CImgDisplay debug_disp(image, "Debug");
 	}
 
 	// Inpainting
@@ -183,9 +178,9 @@ int main(int argc, char** argv)
 
 	// TODO: allow 'blend mode' where mask value is a blend coefficient
 
-	for ( uint y = y_min; y <= y_max; ++y)
+	for ( int y = y_min; y <= y_max; ++y)
 	{
-		for ( uint x = x_min; x <= x_max; ++x)
+		for ( int x = x_min; x <= x_max; ++x)
 		{
 			if ( regions(x,y) > 0 )
 			{
@@ -213,7 +208,7 @@ int main(int argc, char** argv)
 
 	if ( display )
 	{
-		CImgDisplay output_disp(image,"Inpainted Original");
+		cimg_library::CImgDisplay output_disp(image,"Inpainted Original");
 		while ( !output_disp.is_closed() )
 		{
 			output_disp.wait(1000);

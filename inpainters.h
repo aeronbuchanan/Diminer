@@ -21,8 +21,14 @@
 
 #include <math.h>
 #include <limits>
+#include <tuple>
 
+#include "diminer.h"
 #include "patch.h"
+
+namespace Diminer
+{
+
 
 class Inpainter
 {
@@ -30,7 +36,7 @@ public:
 	Inpainter(BoundaryColors const * const _b) : m_boundary(_b) {}
 	~Inpainter() {}
 
-	virtual Color pixelColor(Coord) { return Color(); }
+	virtual Color pixelColor(Coord);
 
 protected:
 	BoundaryColors const * m_boundary;
@@ -55,6 +61,10 @@ private:
 	float m_pow;
 };
 
+
+typedef std::tuple<Coord, float, float, float> CoordFFF;
+typedef std::vector<CoordFFF> BoundaryGrads;
+
 class GradientWeightedInpainter : public Inpainter
 {
 public:
@@ -73,3 +83,4 @@ private:
 	int m_jitter;
 };
 
+} // end namespace Diminer

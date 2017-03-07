@@ -17,42 +17,43 @@
  * along with Diminer.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+// TODO: clean up include hierarchy 
+
 #pragma once
 
-#include <utility>
 #include <vector>
-#include <unordered_map>
+#include <utility>
 
-// TODO: make Diminer image-library agnostic
-using cimg_library::CImg;
+#include "vecn.h"
+#include "CImg.h"
+using namespace cimg_library;
 
-#include "patch.h"
+#define IS_NOT_MASKED 0
+#define IS_MASKED 255
+
+typedef unsigned char uchar;
+typedef unsigned int uint;
 
 namespace Diminer
 {
 
-template<uint N>
-class Diminerer
+class Color
 {
 public:
-	typedef ImagePatch<N, 3> Patch;
-	typedef std::vector<Patch> PatchLibrary;
+   Color() : r(0), g(0), b(0), a(255) {}
 
-	Diminerer() : m_patchWidth(N) { }
-
-	void extendTextureIn(cimg_library::CImg<float> & _image, cimg_library::CImg<float> & _mask) const;
-
-	uint selectPatchFor(cimg_library::CImg<float> & _image, cimg_library:: CImg<float> & _mask, uint _x, uint _y) const;
-
-	void addPatches(PatchLibrary const & _pl) { m_patches.insert( m_patches.end(), _pl.begin(), _pl.end() ); }
-	void clearPatches() { m_patches.clear(); }
-
-private:
-
-	PatchLibrary m_patches;
-	uint m_patchWidth;
+   uint r, g, b, a;
 };
+
+// TODO: img mask test should be switchable
+bool imgMaskTest(Color c);
+
+typedef VecN<int, 2> Coord;
+typedef std::vector<Coord> Coords;
+typedef std::pair<Coord, Color> CoordCol;
+typedef std::vector<CoordCol> BoundaryColors;
 
 } // end namespace Diminer
 
-#include "Diminer.hpp"
+
+

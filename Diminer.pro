@@ -9,7 +9,8 @@ QMAKE_CXXFLAGS += -std=c++11
 INCLUDEPATH += "../CImg/"
 
 SOURCES += main.cpp \
-    inpainters.cpp
+    inpainters.cpp \
+    diminer.cpp
 
 HEADERS += \
     inpainters.h \
@@ -19,6 +20,6 @@ HEADERS += \
     texSynth.hpp \
     vecn.h \
     table.h \
-    common.h \
+    dinimer.h \
     circularSeam.h
 
