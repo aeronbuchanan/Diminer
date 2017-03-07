@@ -220,7 +220,7 @@ void GradientWeightedInpainter::init(CImg<uchar> const * const _img, CImg<uchar>
 				else
 				{
 					// There are sections of boundary with mask on both sides
-					std::cout << "ERROR: chain ended prematurely" << std::endl;
+					std::cout << "ERROR: chain ended prematurely (mask shape too complex)" << std::endl;
 					i = m_boundary->size();
 					break;
 				}
@@ -266,7 +266,8 @@ void GradientWeightedInpainter::init(CImg<uchar> const * const _img, CImg<uchar>
 			else if ( j >= m_boundary->size() ) j = 0;
 		}
 	}
-	std::cout << "DEBUG: " << (m_boundary->size() != chainedBoundary.size() ? "FAIL" : "success") << " - size(m_boundary) = " << m_boundary->size() << ", size(chainedBoundary) = " << chainedBoundary.size() << std::endl;
+
+	std::cout << "DEBUG: " << (m_boundary->size() != chainedBoundary.size() ? "FAIL" : "success") << " :: size(m_boundary) = " << m_boundary->size() << ", size(chainedBoundary) = " << chainedBoundary.size() << std::endl;
 
 	// non-max suppress
 	Coord next = chainedBoundary.front();
