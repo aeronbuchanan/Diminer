@@ -39,6 +39,7 @@ int main(int argc, char** argv)
 	float smoothness = cimg_option("-s", 2.f, "smoothness");
 	int dilation = cimg_option("-r", 0, "mask dilation radius");
 	bool display = cimg_option("-D", 0, "display");
+        bool limitFilling = cimg_option("-L", 1, "limit filling to max extent of image area");
 
 	if ( !imageFilename )
 	{
@@ -93,7 +94,8 @@ int main(int argc, char** argv)
 	//*** detect connected regions ***//
 	CImg<uchar> regions(mask); // TODO: float matrix
 
-        regions.save("debug_regions_000.png");
+        /*regions.save("debug_regions_000.png");
+         */
 
 	int count = 0;
 	cimg_forXY(mask,x,y)
@@ -105,19 +107,23 @@ int main(int argc, char** argv)
 			uchar col = count; // 255 / count;
                         regions.draw_fill(x, y, &col);
 
+                        /*
                         char * name = (char*)malloc(128);
                         sprintf(name, "debug_regions_%03d.png", count);
                         regions.save(name);
                         free(name);
+                        */
 		}
 	}
 
 	std::cout << "Found " << count << " regions." << std::endl;
 
         // DEBUG
-	image.save("debug_image.png");
+	/*
+        image.save("debug_image.png");
 	mask.save("debug_mask.png");
         regions.save("debug_regions.png");
+        */
 
 	// Find region 4-boundaries
 	std::vector<BoundaryColors> boundaries;
@@ -150,10 +156,13 @@ int main(int argc, char** argv)
 					color.b = image(x,y,0,2);
 					cs.push_back(CoordCol(Coord(x, y), color));
 
-					if ( x < x_min ) x_min = x;
-					if ( x > x_max ) x_max = x;
-					if ( y < y_min ) y_min = y;
-					if ( y > y_max ) y_max = y;
+                                        if ( limitFilling )
+                                        {
+						if ( x < x_min ) x_min = x;
+						if ( x > x_max ) x_max = x;
+						if ( y < y_min ) y_min = y;
+						if ( y > y_max ) y_max = y;
+					}
 				}
 			}
 		}
