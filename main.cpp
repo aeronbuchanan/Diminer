@@ -31,9 +31,9 @@ int main(int argc, char** argv)
 
 	cimg_usage("Usage: Diminer [options] -i input\n");
 
-	char const * imageFilename = cimg_option("-i", (char*)0, "image file to be inpainted");
-	char const * maskFilename = cimg_option("-m", (char*)0, "mask image denoting region to be inpainted (values > 127)");
-	char const * outputFilename = cimg_option("-o", (char*)0, "output filename");
+	char const * imageFilename = cimg_option("-i", "image.jpg", "image file to be inpainted");
+	char const * maskFilename = cimg_option("-m", "", "mask image denoting region to be inpainted (values > 127)");
+	char const * outputFilename = cimg_option("-o", "inpainted.jpg", "output filename");
 	uint inpaintingFunc = cimg_option("-f", 2, "0 = bleed; 1 = weighted; 2 = gradient-weighted");
 	float jitter = cimg_option("-j", 0.35, "jitter between 0.f and 1.f");
 	float smoothness = cimg_option("-s", 2.f, "smoothness");
@@ -53,14 +53,20 @@ int main(int argc, char** argv)
 	}
 
 	CImg<uchar> image(imageFilename);
-	CImg<uchar> mask;
+	CImg<uchar> mask(image.width(), image.height(), 1, 1, 0);
 	if (maskFilename)
 	{
-		mask.load(maskFilename);
+		CImg<uchar> maskFile(maskFilename);
+
+		cimg_forXY(mask,x,y)
+		{
+                        bool markedAsMask = maskFile(x,y,0,0) > 0 || maskFile(x,y,0,1) > 0 || maskFile(x,y,0,2) > 0;
+			mask(x,y) = markedAsMask ? IS_MASKED : IS_NOT_MASKED; // TODO: use greyscale information if available
+                        //std::cout << "(" << x << ", " << y << "): [" << int(mask(x,y,0,0)) << "; " << int(mask(x,y,0,1)) << "; " << int(mask(x,y,0,2)) << "] => " << int(mask(x,y)) << std::endl;
+		}
 	}
 	else
 	{
-		mask.assign(image.width(),image.height(),1,1);
 		cimg_forXY(image,x,y)
 		{
 			Color c;
@@ -75,7 +81,7 @@ int main(int argc, char** argv)
 
 	if ( !dilation && inpaintingFunc == 2 )
 	{
-		dilation = 2;
+		dilation = 1;
 	}
 	if ( dilation )
 	{
@@ -87,6 +93,8 @@ int main(int argc, char** argv)
 	//*** detect connected regions ***//
 	CImg<uchar> regions(mask); // TODO: float matrix
 
+        regions.save("debug_regions_000.png");
+
 	int count = 0;
 	cimg_forXY(mask,x,y)
 	{
@@ -96,10 +104,20 @@ int main(int argc, char** argv)
                         if ( count == IS_MASKED ) { std::cerr << "ERROR: too many mask regions" << std::endl; return 1; }
 			uchar col = count; // 255 / count;
                         regions.draw_fill(x, y, &col);
+
+                        char * name = (char*)malloc(128);
+                        sprintf(name, "debug_regions_%03d.png", count);
+                        regions.save(name);
+                        free(name);
 		}
 	}
 
 	std::cout << "Found " << count << " regions." << std::endl;
+
+        // DEBUG
+	image.save("debug_image.png");
+	mask.save("debug_mask.png");
+        regions.save("debug_regions.png");
 
 	// Find region 4-boundaries
 	std::vector<BoundaryColors> boundaries;
