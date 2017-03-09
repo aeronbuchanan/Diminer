@@ -18,6 +18,7 @@
  */
 
 #include <iostream>
+#include <stdlib.h>
 
 #include "diminer.h"
 #include "patch.h"
@@ -38,8 +39,8 @@ int main(int argc, char** argv)
 	float jitter = cimg_option("-j", 0.35, "jitter between 0.f and 1.f");
 	float smoothness = cimg_option("-s", 2.f, "smoothness");
 	int dilation = cimg_option("-r", 0, "mask dilation radius");
-	bool display = cimg_option("-D", 0, "display");
-        bool limitFilling = cimg_option("-L", 0, "limit filling to max extent of image area: 0 = full image; 1 = limited");
+	bool display = cimg_option("-D", false, "display");
+        uint limitInpainting = cimg_option("-L", 0, "limit inpainting to max extent of image area: 0 = full image; 1 = limited; 2 = limit and crop");
 
 	if ( !imageFilename )
 	{
@@ -94,8 +95,7 @@ int main(int argc, char** argv)
 	//*** detect connected regions ***//
 	CImg<uchar> regions(mask); // TODO: float matrix
 
-        /*regions.save("debug_regions_000.png");
-         */
+        //regions.save("debug_regions_000.png");
 
 	int count = 0;
 	cimg_forXY(mask,x,y)
@@ -103,7 +103,7 @@ int main(int argc, char** argv)
 		if ( regions(x,y) == IS_MASKED )
 		{
 			++count; // TODO: deal with any number of regions
-                        if ( count == IS_MASKED ) { std::cerr << "ERROR: too many mask regions" << std::endl; return 1; }
+                        if ( count == IS_MASKED ) { std::cerr << "ERROR: too many mask regions" << std::endl; exit(EXIT_FAILURE); }
 			uchar col = count; // 255 / count;
                         regions.draw_fill(x, y, &col);
 
@@ -130,10 +130,10 @@ int main(int argc, char** argv)
 	int W = regions.width() - 1;
 	int H = regions.height() - 1;
 
-	int x_min = limitFilling ? W : 0;
-	int x_max = limitFilling ? 0 : W;
-	int y_min = limitFilling ? H : 0;
-	int y_max = limitFilling ? 0 : H;
+	int x_min = limitInpainting ? W : 0;
+	int x_max = limitInpainting ? 0 : W;
+	int y_min = limitInpainting ? H : 0;
+	int y_max = limitInpainting ? 0 : H;
 
 	for ( int i = 0; i < count; ++i )
 	{
@@ -144,11 +144,11 @@ int main(int argc, char** argv)
 			if ( regions(x,y) == 0 )
 			{
 				if (
-						( y > 0 && regions(x, y - 1) == col ) ||
-						( y < H && regions(x, y + 1) == col ) ||
-						( x > 0 && regions(x - 1, y) == col ) ||
-						( x < W && regions(x + 1, y) == col )
-					)
+					( y > 0 && regions(x, y - 1) == col ) ||
+					( y < H && regions(x, y + 1) == col ) ||
+					( x > 0 && regions(x - 1, y) == col ) ||
+					( x < W && regions(x + 1, y) == col )
+				)
 				{
 					Color color;
 					color.r = image(x,y,0,0);
@@ -156,7 +156,7 @@ int main(int argc, char** argv)
 					color.b = image(x,y,0,2);
 					cs.push_back(CoordCol(Coord(x, y), color));
 
-					if ( limitFilling )
+					if ( limitInpainting )
 					{
 						if ( x < x_min ) x_min = x;
 						if ( x > x_max ) x_max = x;
@@ -226,6 +226,8 @@ int main(int argc, char** argv)
 	}
 
 	std::cout << "complete." << std::endl;
+
+	if ( limitInpainting == 2 ) image.crop(x_min, y_min, x_max, y_max);
 
 	if ( outputFilename )
 	{

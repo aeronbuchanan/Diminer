@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+ <head>
+  <meta charset="utf-8"/>
+  <script src="debug.js"></script>
+  <script type="application/javascript">
+function check(i, j) {
+    dl = d[i][j];
+    dends = [];
+    dused = [];
+    ds = [];
+    for ( i = 0; i < dl.length; i++ )
+    {
+      ds[dl[i].id] = dl[i];
+      dused[i] = false;
+      if ( dl[i].hither == null && dl[i].thither == null ) { console.log("ERROR: unconnected link! " + dl[i].id); }
+      else if ( dl[i].hither == null || dl[i].thither == null ) { dends.push(dl[i]); }
+    }
+    console.log("Ends count = " + dends.length);
+    currID = dends[0].id;
+    prevID = null;
+    c = 0;
+    while( c < ds.length && currID != null )
+    {
+       dused[currID] = true;
+
+       if ( ds[currID].hither == prevID ) nextID = ds[currID].thither;
+       else if ( ds[currID].thither == prevID ) nextID = ds[currID].hither;
+       else console.log("ERROR: reciprocal link mismatch! " + currID);
+
+       prevID = currID;
+       currID = nextID;
+       c++;
+    }
+    allUsed = true;
+    for ( i = 0; i < dl.length; i++ )
+    {
+       allUsed = allUsed && dused[i];
+    }
+    console.log("All used: " + allUsed);
+    console.log("Finshed");
+}
+  </script>
+  <script type="application/javascript">
+    function draw(i,j) {
+      dl = d[i][j];
+      ds = [];
+      for ( i = 0; i < dl.length; i++ ) ds[dl[i].id] = dl[i];
+      
+      var canvas = document.getElementById('canvas');
+      if (canvas.getContext) {
+        var ctx = canvas.getContext('2d');
+        ctx.scale(10.0, 10.0);
+
+        ctx.fillStyle = 'rgb(139, 139, 249)';
+        ctx.lineWidth = 0.1;
+        ctx.beginPath();
+        for ( i = 0; i < dl.length; i++ )
+        {
+          x = dl[i].x;
+          y = dl[i].y;
+          ctx.fillRect(x - 0.5, y - 0.5, 1, 1);
+          if ( dl[i].hither != null )
+          {
+             c = ds[dl[i].hither];
+             ctx.moveTo(x, y);
+             ctx.lineTo(c.x, c.y);
+          }
+          if ( dl[i].thither != null )
+          {
+             c = ds[dl[i].thither];
+             ctx.moveTo(x, y);
+             ctx.lineTo(c.x, c.y);
+          }
+        }
+        ctx.stroke()
+
+      }
+    }
+  </script>
+ </head>
+ <body onload="check(149, 0); draw(149, 0);">
+   <canvas id="canvas" width="1000" height="1000"></canvas>
+ </body>
+</html>
+

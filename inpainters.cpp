@@ -18,8 +18,10 @@
  */
 
 #include <iostream>
+#include <limits>
 
 #include "inpainters.h"
+#include "boundaryChains.h"
 
 using namespace Diminer;
 
@@ -98,8 +100,21 @@ void GradientWeightedInpainter::init(CImg<uchar> const * const _img, CImg<uchar>
 
 	// gradient
 	CImg<float> grad(img.width(), img.height(), 3, 1, 0.f);
+	//CImg<uchar> debugGrad(img.width(), img.height(), 1, 3, 0);
 
-	CImg<uchar> debugGrad(img.width(), img.height(), 1, 3, 0);
+	// pow series look-up
+	int d = ceil( log(1e8) / log(m_pow) ); // find out how far we need to go...
+	m_attenuation.assign(d, d, 1, 1, 1.0);
+	cimg_forXY(m_attenuation,x,y)
+		if ( x > 0 || y > 0 ) m_attenuation(x,y) = 1.f / pow(x * x + y * y, m_pow); // closer pixels are more heavily weighted
+
+	// DEBUG
+	cimg_forXY(m_attenuation,x,y)
+	{
+		if ( x == 0 ) std::cout << "\n";
+		std::cout << m_attenuation(x,y) << ", ";
+	}
+	std::cout << std::endl;
 
 /*
 	@misc{NRIGO,
@@ -171,101 +186,29 @@ void GradientWeightedInpainter::init(CImg<uchar> const * const _img, CImg<uchar>
 			grad(x,y,1) = gx / mag;
 			grad(x,y,2) = gy / mag;
 
-			debugGrad(x,y,0,0) = mag;
-			debugGrad(x,y,0,1) = abs(gx);
-			debugGrad(x,y,0,2) = abs(gy);
+			//debugGrad(x,y,0,0) = mag;
+			//debugGrad(x,y,0,1) = abs(gx);
+			//debugGrad(x,y,0,2) = abs(gy);
 		}
 	}
 
-	debugGrad.save("gradient.bmp");
+	//debugGrad.save("gradient.bmp");
 
 	std::cout << "DEBUG: length of boundary = " << m_boundary->size() << std::endl;
 
-	// chain boundary coords in order
-	std::vector<bool> chained(m_boundary->size(), false);
-	Coords chainedBoundary;
-	chainedBoundary.push_back((*m_boundary)[0].first);
-	chained[0] = true;
-	int last_j = 0;
-	int j = 1;
-	int jDirection = ( j > last_j ? 1 : -1 );
-	for ( uint i = 1; i < m_boundary->size(); ++i )
+	// get chain boundary coords in order
+	ChainManager cm;
+	for ( uint i = 0; i < m_boundary->size(); ++i )
 	{
-		Coord c = chainedBoundary.back();
-		int x = c.x();
-		int y = c.y();
-		bool nextFound = false;
-		uint first_j = j;
-
-		//std::cout << "SET(" << first_j << ") -> ";
-
-		uint diag_j = 0;
-		bool firstIter = true;
-		while ( !nextFound )
-		{
-			//std::cout << j;
-
-			if ( j == first_j && !firstIter )
-			{
-				if ( diag_j )
-				{
-					chainedBoundary.push_back((*m_boundary)[diag_j].first);
-					chained[diag_j] = true;
-					nextFound = true;
-					jDirection = ( j > last_j ? 1 : -1 );
-					last_j = j;
-
-					//std::cout << "added(" << diag_j << ") " << std::endl;
-				}
-				else
-				{
-					// There are sections of boundary with mask on both sides
-					std::cout << "ERROR: chain ended prematurely (mask shape too complex)" << std::endl;
-					i = m_boundary->size();
-					break;
-				}
-			}
-			else
-			{
-				if ( !chained[j] )
-				{
-					int dx = abs( x - (*m_boundary)[j].first.x() );
-					int dy = abs( y - (*m_boundary)[j].first.y() );
-
-					//std::cout << "(" << dx << "," << dy << ") ";
-
-					// region is 4-connected, therefore next boundary will be
-					// \Delta = (1,0) or (0,1) or (1,1) only.
-					if ( (dx == 1 && dy == 0) || (dx == 0 && dy == 1) )
-					{
-						chainedBoundary.push_back((*m_boundary)[j].first);
-						chained[j] = true;
-						nextFound = true;
-						jDirection = ( j > last_j ? 1 : -1 );
-						last_j = j;
-
-						//std::cout << "added(" << j << ")" << std::endl;
-					}
-					else if ( (dx == 1) && (dy == 1) )
-					{
-						diag_j = j;
-						//std::cout << "marked(" << j << ") ";
-					}
-				}
-
-				else
-				{
-					//std::cout << "* ";
-				}
-			}
-
-			if ( firstIter ) firstIter = false;
-
-			j += jDirection;
-			if ( j < 0 ) j = m_boundary->size() - 1;
-			else if ( j >= m_boundary->size() ) j = 0;
-		}
+		cm.addCoord((*m_boundary)[i].first);
 	}
+	if ( ! cm.isGood(img.width(), img.height()) )
+	{
+		std::cout << "ERROR: boundary ordering failure (fragmented or neither a loop nor spanning the image) - simplify mask and try again?" << std::endl;
+	}
+
+	// walk along chainGrouping
+	Coords chainedBoundary = cm.getOrderedCoords();
 
 	std::cout << "DEBUG: " << (m_boundary->size() != chainedBoundary.size() ? "FAIL" : "success") << " :: size(m_boundary) = " << m_boundary->size() << ", size(chainedBoundary) = " << chainedBoundary.size() << std::endl;
 
@@ -318,17 +261,20 @@ void GradientWeightedInpainter::init(CImg<uchar> const * const _img, CImg<uchar>
 
 Color GradientWeightedInpainter::pixelColor(Coord _c)
 {
-	std::vector<float> ks(m_boundary->size(), 1.f);
+	std::vector<double> ks(m_boundary->size(), 0.f);
+
+	uint maxd = m_attenuation.width();
 
 	for ( uint i = 0; i < m_boundary->size(); ++i )
 	{
 		Coord coord = (*m_boundary)[i].first;
 
-		float dx = _c.x() - coord.x();
-		float dy = _c.y() - coord.y();
-		float distSqrd = dx * dx + dy * dy;
+		uint dx = abs(_c.x() - coord.x());
+		uint dy = abs(_c.y() - coord.y());
 
-		ks[i] = 1.f / pow(distSqrd, m_pow); // closer pixels more heavily weighted
+		// closer pixels more heavily weighted
+		if ( dx < maxd && dy < maxd ) ks[i] = m_attenuation(dx, dy); 
+		else ks[i] = m_attenuation(maxd - 1, maxd - 1);
 	}
 
 	for ( uint j = 0; j < m_boundaryGrad.size(); ++j )
@@ -364,7 +310,7 @@ Color GradientWeightedInpainter::pixelColor(Coord _c)
 	{
 		Color c_i = (*m_boundary)[i].second;
 
-		float k_i = std::max(ks[i], std::numeric_limits<float>::min());
+		float k_i = std::max(ks[i], double(std::numeric_limits<float>::min()));
 
 		if ( rand() % 100 >= m_jitter )
 		{

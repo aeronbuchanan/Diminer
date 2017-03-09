@@ -81,6 +81,8 @@ private:
 
 	float m_pow;
 	int m_jitter;
+	CImg<float> m_attenuation;
 };
 
 } // end namespace Diminer
+
