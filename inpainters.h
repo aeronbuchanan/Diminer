@@ -26,28 +26,69 @@
 #include "diminer.h"
 #include "patch.h"
 
+// DEBUG
+#include "CImg.h" 
+
 namespace Diminer
 {
 
+template <class M, class T>
+class SpatialGridSquare
+{
+public:
+	SpatialGridSquare() : xmax(0), xmin(0), ymax(0), ymin(0), contents(0) {};
+
+	M sqrdDistanceTo(M x, M y)
+	{
+		double dx = 0;
+		double dy = 0;
+
+		if ( x < xmin ) dx = x - xmin;
+		else if ( x > xmax ) dx = x - xmax;
+
+		if ( y < ymin ) dy = y - ymin;
+		else if ( y > ymax ) dy = y - ymax;
+
+		return (M)(dx * dx + dy * dy);
+	}
+
+	M xmax, xmin, ymax, ymin;
+	T* contents;
+};
+
+template <class M, class T>
+using SpatialGrid = std::vector<SpatialGridSquare<M, T>>;
+
+typedef std::pair<BoundaryColors::iterator, BoundaryColors::iterator> BoundaryColorRange;
+typedef std::vector<BoundaryColorRange> BoundaryColorRanges;
+
+typedef SpatialGridSquare<double, BoundaryColorRanges> BoundaryColorGridSq;
+typedef SpatialGrid<double, BoundaryColorRanges> BoundaryColorGrid;
 
 class Inpainter
 {
 public:
-	Inpainter(BoundaryColors const * const _b) : m_boundary(_b) {}
+	Inpainter(BoundaryColors const * const);
+	Inpainter(BoundaryColors const * const _b, CImg<uchar> * _img) : m_boundary(_b), debug(_img) {}
 	~Inpainter() {}
 
-	virtual Color pixelColor(Coord);
+	BoundaryColorRanges withinRange(CoordPtr);
+	virtual Color pixelColor(CoordPtr);
 
 protected:
 	BoundaryColors const * m_boundary;
+	BoundaryColorGrid m_grid;
+
+	CImg<uchar> * debug;
 };
 
 class BleedInpainter : public Inpainter
 {
 public:
 	BleedInpainter(BoundaryColors const * const _b) : Inpainter(_b) {}
+	BleedInpainter(BoundaryColors const * const _b, CImg<uchar> * _img) : Inpainter(_b, _img) {}
 
-	Color pixelColor(Coord _c);
+	Color pixelColor(CoordPtr _c);
 };
 
 class WeightedInpainter : public Inpainter
@@ -55,14 +96,14 @@ class WeightedInpainter : public Inpainter
 public:
 	WeightedInpainter(BoundaryColors const * const _b, float _pow = 2.f) : Inpainter(_b), m_pow(_pow) {}
 
-	Color pixelColor(Coord _c);
+	Color pixelColor(CoordPtr _c);
 
 private:
 	float m_pow;
 };
 
 
-typedef std::tuple<Coord, float, float, float> CoordFFF;
+typedef std::tuple<CoordPtr, float, float, float> CoordFFF;
 typedef std::vector<CoordFFF> BoundaryGrads;
 
 class GradientWeightedInpainter : public Inpainter
@@ -70,7 +111,7 @@ class GradientWeightedInpainter : public Inpainter
 public:
 	GradientWeightedInpainter(BoundaryColors const * const _b, CImg<uchar> const * const _img, CImg<uchar> const * const _mask, float _pow = 2.f, float _jitter = 0.35, int _dilation = 2) : Inpainter(_b), m_pow(_pow), m_jitter(100 * _jitter) { init(_img, _mask); }
 
-	Color pixelColor(Coord _c);
+	Color pixelColor(CoordPtr _c);
 
 private:
 	void init(CImg<uchar> const * const _img, CImg<uchar> const * const _mask);

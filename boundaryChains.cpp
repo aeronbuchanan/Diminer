@@ -46,8 +46,8 @@ uint ChainLink::COUNT = 0;
 
 NeighbourType ChainLink::neighbourTypeOf(ChainLinkPtr cc)
 {
-	int dx = abs(cc->x() - m_c.x());
-	int dy = abs(cc->y() - m_c.y());
+	int dx = abs(cc->x() - m_c->x);
+	int dy = abs(cc->y() - m_c->y);
 	NeighbourType r = NeighbourType::NONE;
 	if ( (dx == 1 && dy == 0) || (dx == 0 && dy == 1) ) r = NeighbourType::FOUR;
 	else if ( dx == 1 && dy == 1 ) r = NeighbourType::EIGHT;
@@ -173,12 +173,7 @@ void ChainGrouping::mergeWith(ChainGrouping & other, ChainLinkPtr thisEnd, Chain
 
 bool ChainGrouping::addCoordToMiddle(ChainLinkPtr cc)
 {
-	/*  Add into a "corner":
-	 *  
-	 * ###O
-	 *    #
-	 *    ####
-	 */
+	// no complex checks here - assume that the boundary candidate identification process is sound
 
 	DEBUG2(std::cout << "Starting 'corner' search for insertion..." << std::endl;)
 
@@ -209,10 +204,10 @@ bool ChainGrouping::addCoordToMiddle(ChainLinkPtr cc)
 
 			// TODO: flag near misses
 			if ( 
-				cc->neighbourTypeOf(curr) == NeighbourType::FOUR &&
-				cc->neighbourTypeOf(next) == NeighbourType::FOUR &&
-				curr->neighbourTypeOf(next) == NeighbourType::EIGHT
+				cc->neighbourTypeOf(curr) != NeighbourType::NONE &&
+				cc->neighbourTypeOf(next) != NeighbourType::NONE
 			) {
+				addLink(cc);
 				curr->replaceLink(next, cc);
 				next->replaceLink(curr, cc);
 				cc->link(curr);
@@ -270,7 +265,7 @@ ChainManager::~ChainManager()
 	DEBUG1(std::cout << "[] ]" << std::endl;)
 }
 
-void ChainManager::addCoord(Coord c)
+void ChainManager::add(CoordPtr c)
 {
 	ChainLinkPtr cc = std::make_shared<ChainLink>(c);
 	m_chainLinks.push_back(cc);
@@ -373,16 +368,17 @@ DEBUG1(
 }
 
 // TODO: deal with masks with multiple boundaries
-Coords ChainManager::getOrderedCoords()
+Coords ChainManager::orderedChains()
 {
 	Coords cs;
 
 	DEBUG2(std::cout << "DEBUG: following the chain" << std::endl;)
 
-	if ( m_chainGroupings.size() == 1 )
+	if ( m_chainGroupings.size() > 0 )
 	{
-		ChainLinkPtr prev = ChainLinkPtr();
-		ChainLinkPtr curr = m_chainGroupings[0].chainStart();
+		ChainGrouping cg = m_chainGroupings[0];
+		ChainLinkPtr curr = cg.chainStart();
+		ChainLinkPtr prev = cg.isClosedLoop() ? curr->thither : ChainLinkPtr();
 		while ( curr )
 		{
 			cs.push_back(curr->m_c);	
@@ -397,15 +393,14 @@ Coords ChainManager::getOrderedCoords()
 
 bool ChainManager::isGood(int widthRef, int heightRef)
 {
-	if ( m_chainGroupings.size() != 1 ) return false;
+	if ( m_chainGroupings.size() == 0 ) return false;
 
-	uint boundaryIntersections = 0;
-	if ( m_chainGroupings[0].xmin() <= 0 ) ++boundaryIntersections;
-	if ( m_chainGroupings[0].ymin() <= 0 ) ++boundaryIntersections;
-	if ( m_chainGroupings[0].xmax() >= widthRef ) ++boundaryIntersections;
-	if ( m_chainGroupings[0].ymax() >= heightRef ) ++boundaryIntersections;
+	ChainGrouping cg = m_chainGroupings[0];
 
-	return  m_chainGroupings[0].isClosedLoop() || boundaryIntersections >= 2;
+// TODO: allow boundary coords to include edge pixels?
+#define ON_BOUNDARY(C, W, H) (C->x() <= 1 || C->x() >= W - 1 || C->y() <= 1 || C->y() >= H - 1)
+	return  m_chainGroupings[0].isClosedLoop() || (ON_BOUNDARY(cg.chainStart(), widthRef, heightRef) && ON_BOUNDARY(cg.chainEnd(), widthRef, heightRef));
+#undef ON_BOUNDARY
 }
 
 

@@ -21,44 +21,41 @@
 #include <limits>
 
 #include "inpainters.h"
-#include "boundaryChains.h"
 
 using namespace Diminer;
 
-Color Inpainter::pixelColor(Coord) { return Color(); }
+Inpainter::Inpainter(BoundaryColors const * const _b) : m_boundary(_b)
+{
+	// populate spatial grid
+	double gridSize = 100;
+	
+}
 
-Color BleedInpainter::pixelColor(Coord _c)
+Color Inpainter::pixelColor(CoordPtr) { return Color(); }
+
+Color BleedInpainter::pixelColor(CoordPtr _c)
 {
 	float bestDist = std::numeric_limits<float>::max();
-	uchar bestR = 0;
-	uchar bestG = 0;
-	uchar bestB = 0;
+	Color bestCol = Color();
 	for ( uint i = 0; i < m_boundary->size(); ++i )
 	{
-		Coord coord = (*m_boundary)[i].first;
-		Color color = (*m_boundary)[i].second;
-		float dx = _c.x() - coord.x();
-		float dy = _c.y() - coord.y();
-
+		CoordPtr coord = (*m_boundary)[i];
+		Color color = coord->col;
+		float dx = float(_c->x) - float(coord->x);
+		float dy = float(_c->y) - float(coord->y);
 		float dist = dx * dx + dy * dy;
+
 		if ( dist < bestDist )
 		{
 			bestDist = dist;
-			bestR = color.r;
-			bestG = color.g;
-			bestB = color.b;
+			bestCol = color;
 		}
 	}
 
-	Color c;
-	c.r = bestR;
-	c.g = bestG;
-	c.b = bestB;
-
-	return c;
+	return bestCol;
 }
 
-Color WeightedInpainter::pixelColor(Coord _c)
+Color WeightedInpainter::pixelColor(CoordPtr _c)
 {
 	float weightSum = 0;
 	float redSum = 0;
@@ -67,10 +64,10 @@ Color WeightedInpainter::pixelColor(Coord _c)
 
 	for ( uint i = 0; i < m_boundary->size(); ++i )
 	{
-		Coord coord = (*m_boundary)[i].first;
-		Color color = (*m_boundary)[i].second;
-		float dx = _c.x() - coord.x();
-		float dy = _c.y() - coord.y();
+		CoordPtr coord = (*m_boundary)[i];
+		Color color = coord->col;
+		float dx = float(_c->x) - float(coord->x);
+		float dy = float(_c->y) - float(coord->y);
 		float distSqrd = dx * dx + dy * dy;
 		float weight = 1.f / pow(distSqrd, m_pow); // closer pixels more heavily weighted
 
@@ -194,51 +191,33 @@ void GradientWeightedInpainter::init(CImg<uchar> const * const _img, CImg<uchar>
 
 	//debugGrad.save("gradient.bmp");
 
-	std::cout << "DEBUG: length of boundary = " << m_boundary->size() << std::endl;
-
-	// get chain boundary coords in order
-	ChainManager cm;
-	for ( uint i = 0; i < m_boundary->size(); ++i )
-	{
-		cm.addCoord((*m_boundary)[i].first);
-	}
-	if ( ! cm.isGood(img.width(), img.height()) )
-	{
-		std::cout << "ERROR: boundary ordering failure (fragmented or neither a loop nor spanning the image) - simplify mask and try again?" << std::endl;
-	}
-
-	// walk along chainGrouping
-	Coords chainedBoundary = cm.getOrderedCoords();
-
-	std::cout << "DEBUG: " << (m_boundary->size() != chainedBoundary.size() ? "FAIL" : "success") << " :: size(m_boundary) = " << m_boundary->size() << ", size(chainedBoundary) = " << chainedBoundary.size() << std::endl;
-
 	// non-max suppress
-	Coord next = chainedBoundary.front();
-	Coord curr = chainedBoundary.back();
-	Coord prev;
-	for ( uint i = 1; i < chainedBoundary.size(); ++i )
+	CoordPtr next = m_boundary->front();
+	CoordPtr curr = m_boundary->back();
+	CoordPtr prev;
+	for ( uint i = 1; i < m_boundary->size(); ++i )
 	{
 		prev = curr;
 		curr = next;
-		next = chainedBoundary[i];
-		if ( grad(curr.x(),curr.y(),0) >= grad(prev.x(), prev.y(),0) && grad(curr.x(),curr.y(),0) > grad(next.x(), next.y(),0) )
-			m_boundaryGrad.push_back(CoordFFF(curr, grad(curr.x(),curr.y(),0), grad(curr.x(),curr.y(),1), grad(curr.x(),curr.y(),2)));
+		next = (*m_boundary)[i];
+		if ( grad(curr->x,curr->y,0) >= grad(prev->x, prev->y,0) && grad(curr->x,curr->y,0) > grad(next->x, next->y,0) )
+			m_boundaryGrad.push_back(CoordFFF(curr, grad(curr->x,curr->y,0), grad(curr->x,curr->y,1), grad(curr->x,curr->y,2)));
 	}
 	// last
 	prev = curr;
 	curr = next;
-	next = chainedBoundary.front();
-	if ( grad(curr.x(),curr.y(),0) >= grad(prev.x(), prev.y(),0) && grad(curr.x(),curr.y(),0) > grad(next.x(), next.y(),0) )
-		m_boundaryGrad.push_back(CoordFFF(curr, grad(curr.x(),curr.y(),0), grad(curr.x(),curr.y(),1), grad(curr.x(),curr.y(),2)));
+	next = m_boundary->front(); // TODO: only do this loop calc if boundary chain is actually a loop
+	if ( grad(curr->x,curr->y,0) >= grad(prev->x, prev->y,0) && grad(curr->x,curr->y,0) > grad(next->x, next->y,0) )
+		m_boundaryGrad.push_back(CoordFFF(curr, grad(curr->x,curr->y,0), grad(curr->x,curr->y,1), grad(curr->x,curr->y,2)));
 
-	//std::cout << "DEBUG: " << (chainedBoundary.size() != m_boundaryGrad.size() ? "FAIL" : "success") << " - size(chainedBoundary) = " << chainedBoundary.size() << ", size(m_boundaryGrad) = " << m_boundaryGrad.size() << std::endl;
+	//std::cout << "DEBUG: " << (m_boundary->size() != m_boundaryGrad.size() ? "FAIL" : "success") << " - size(m_boundary) = " << m_boundary->size() << ", size(m_boundaryGrad) = " << m_boundaryGrad.size() << std::endl;
 	std::cout << "Number of significant gradients = " << m_boundaryGrad.size() << std::endl;
 
 	// note which side each boundary coord is on
 	m_maxGrad = 0.f;
 	for ( uint i = 0; i < m_boundaryGrad.size(); ++i )
 	{
-		Coord coord = std::get<0>(m_boundaryGrad[i]);
+		CoordPtr coord = std::get<0>(m_boundaryGrad[i]);
 		float mag = std::get<1>(m_boundaryGrad[i]);
 		float nx = std::get<2>(m_boundaryGrad[i]);
 		float ny = std::get<3>(m_boundaryGrad[i]);
@@ -248,9 +227,9 @@ void GradientWeightedInpainter::init(CImg<uchar> const * const _img, CImg<uchar>
 		std::vector<int> info(m_boundary->size());
 		for ( uint j = 0; j < m_boundary->size(); ++j )
 		{
-			Coord c = (*m_boundary)[j].first;
-			float dx = c.x() - coord.x();
-			float dy = c.y() - coord.y();
+			CoordPtr c = (*m_boundary)[j];
+			float dx = float(c->x) - float(coord->x);
+			float dy = float(c->y) - float(coord->y);
 			float dot = dx * nx + dy * ny;
 			info[j] = dot < 0 ? -1 : dot > 0 ? 1 : 0;
 		}
@@ -259,7 +238,7 @@ void GradientWeightedInpainter::init(CImg<uchar> const * const _img, CImg<uchar>
 
 }
 
-Color GradientWeightedInpainter::pixelColor(Coord _c)
+Color GradientWeightedInpainter::pixelColor(CoordPtr _c)
 {
 	std::vector<double> ks(m_boundary->size(), 0.f);
 
@@ -267,10 +246,10 @@ Color GradientWeightedInpainter::pixelColor(Coord _c)
 
 	for ( uint i = 0; i < m_boundary->size(); ++i )
 	{
-		Coord coord = (*m_boundary)[i].first;
+		CoordPtr coord = (*m_boundary)[i];
 
-		uint dx = abs(_c.x() - coord.x());
-		uint dy = abs(_c.y() - coord.y());
+		uint dx = abs(float(_c->x) - float(coord->x));
+		uint dy = abs(float(_c->y) - float(coord->y));
 
 		// closer pixels more heavily weighted
 		if ( dx < maxd && dy < maxd ) ks[i] = m_attenuation(dx, dy); 
@@ -279,10 +258,10 @@ Color GradientWeightedInpainter::pixelColor(Coord _c)
 
 	for ( uint j = 0; j < m_boundaryGrad.size(); ++j )
 	{
-		Coord coord = std::get<0>(m_boundaryGrad[j]);
+		CoordPtr coord = std::get<0>(m_boundaryGrad[j]);
 
-		float dx = _c.x() - coord.x();
-		float dy = _c.y() - coord.y();
+		float dx = float(_c->x) - float(coord->x);
+		float dy = float(_c->y) - float(coord->y);
 
 		float mag = std::get<1>(m_boundaryGrad[j]);
 		float nx = std::get<2>(m_boundaryGrad[j]);
@@ -308,7 +287,7 @@ Color GradientWeightedInpainter::pixelColor(Coord _c)
 
 	for ( uint i = 0; i < m_boundary->size(); ++i )
 	{
-		Color c_i = (*m_boundary)[i].second;
+		Color c_i = (*m_boundary)[i]->col;
 
 		float k_i = std::max(ks[i], double(std::numeric_limits<float>::min()));
 

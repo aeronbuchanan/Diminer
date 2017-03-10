@@ -23,6 +23,7 @@
 #include "diminer.h"
 #include "patch.h"
 #include "inpainters.h"
+#include "boundaryChains.h"
 
 using namespace Diminer;
 
@@ -93,7 +94,7 @@ int main(int argc, char** argv)
 	}
 
 	//*** detect connected regions ***//
-	CImg<uchar> regions(mask); // TODO: float matrix
+	CImg<uchar> regions(mask); // TODO: deal with any number of regions
 
         //regions.save("debug_regions_000.png");
 
@@ -102,10 +103,10 @@ int main(int argc, char** argv)
 	{
 		if ( regions(x,y) == IS_MASKED )
 		{
-			++count; // TODO: deal with any number of regions
+			++count; 
                         if ( count == IS_MASKED ) { std::cerr << "ERROR: too many mask regions" << std::endl; exit(EXIT_FAILURE); }
-			uchar col = count; // 255 / count;
-                        regions.draw_fill(x, y, &col);
+			uchar regionID = count;
+                        regions.draw_fill(x, y, &regionID);
 
                         /*
                         char * name = (char*)malloc(128);
@@ -126,7 +127,7 @@ int main(int argc, char** argv)
         */
 
 	// Find region 4-boundaries
-	std::vector<BoundaryColors> boundaries;
+	std::vector<Coords> boundaries;
 	int W = regions.width() - 1;
 	int H = regions.height() - 1;
 
@@ -137,24 +138,27 @@ int main(int argc, char** argv)
 
 	for ( int i = 0; i < count; ++i )
 	{
-		BoundaryColors cs;
-		uchar col = i + 1; // 255 / count;
+		ChainManager cm;
+		uchar regionID = i + 1;
+		uint debugCount = 0;
 		cimg_forXY(regions, x, y)
 		{
-			if ( regions(x,y) == 0 )
+			if ( regions(x, y) == 0 )
 			{
 				if (
-					( y > 0 && regions(x, y - 1) == col ) ||
-					( y < H && regions(x, y + 1) == col ) ||
-					( x > 0 && regions(x - 1, y) == col ) ||
-					( x < W && regions(x + 1, y) == col )
+					( y > 0 && regions(x, y - 1) == regionID ) ||
+					( y < H && regions(x, y + 1) == regionID ) ||
+					( x > 0 && regions(x - 1, y) == regionID ) ||
+					( x < W && regions(x + 1, y) == regionID )
 				)
 				{
-					Color color;
-					color.r = image(x,y,0,0);
-					color.g = image(x,y,0,1);
-					color.b = image(x,y,0,2);
-					cs.push_back(CoordCol(Coord(x, y), color));
+					Color color(
+						image(x, y, 0, 0),
+						image(x, y, 0, 1),
+						image(x, y, 0, 2)
+					);
+					cm.add(std::make_shared<Coord>(x, y, color));
+					++debugCount;
 
 					if ( limitInpainting )
 					{
@@ -166,7 +170,9 @@ int main(int argc, char** argv)
 				}
 			}
 		}
-		boundaries.push_back(cs);
+		if ( ! cm.isGood(image.width(), image.height()) )
+			std::cout << "ERROR: boundary ordering failure (fragmented or neither a loop nor spanning the image) - simplify mask and try again?" << std::endl;
+		boundaries.push_back(cm.orderedChains()); // TODO: cope with multiple boundaries for a region
 	}
 
 	std::cout << "Calculated boundaries." << std::endl;
@@ -181,10 +187,12 @@ int main(int argc, char** argv)
 	std::vector<Inpainter*> inpainters;
 	for ( uint i = 0; i < boundaries.size(); ++i )
 	{
+		std::cout << "DEBUG: length of boundary = " << boundaries[i].size() << std::endl;
+
 		switch ( inpaintingFunc )
 		{
 		case 0:
-			inpainters.push_back(new BleedInpainter(&boundaries[i]));
+			inpainters.push_back(new BleedInpainter(&boundaries[i], &image));
 			break;
 		case 1:
 			inpainters.push_back(new WeightedInpainter(&boundaries[i]));
@@ -214,7 +222,7 @@ int main(int argc, char** argv)
 				// process associated boundary
 				uint r = regions(x,y) - 1;
 				// TODO: check r is within bounds
-				Color c = inpainters[r]->pixelColor(Coord(x, y));
+				Color c = inpainters[r]->pixelColor(std::make_shared<Coord>(x, y));
 				image(x,y,0,0) = c.r;
 				image(x,y,0,1) = c.g;
 				image(x,y,0,2) = c.b;

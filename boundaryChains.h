@@ -35,17 +35,17 @@ typedef std::shared_ptr<ChainLink> ChainLinkPtr;
 class ChainLink
 {
 public:
-	ChainLink(Coord c) : m_c(c), hither(ChainLinkPtr()), thither(ChainLinkPtr()) { m_id = COUNT++; }
+	ChainLink(CoordPtr c) : m_c(c), hither(ChainLinkPtr()), thither(ChainLinkPtr()) { m_id = COUNT++; }
 
-	int x() { return m_c.x(); }
-	int y() { return m_c.y(); }
+	int x() { return m_c->x; }
+	int y() { return m_c->y; }
 
 	NeighbourType neighbourTypeOf(ChainLinkPtr cc);
 	ChainLinkPtr link(ChainLinkPtr cc);
 	ChainLinkPtr next(ChainLinkPtr prev);
 	bool replaceLink(ChainLinkPtr old, ChainLinkPtr cc);
 
-	Coord m_c;
+	CoordPtr m_c;
 	ChainLinkPtr hither;
 	ChainLinkPtr thither;
 
@@ -95,8 +95,8 @@ public:
 	ChainManager();
 	~ChainManager();
 
-	void addCoord(Coord c);
-	Coords getOrderedCoords();
+	void add(CoordPtr c);
+	Coords orderedChains();
 	bool isGood(int widthRef, int heightRef);
 
 private:

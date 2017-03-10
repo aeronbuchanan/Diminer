@@ -23,6 +23,7 @@
 
 #include <vector>
 #include <utility>
+#include <memory>
 
 #include "vecn.h"
 #include "CImg.h"
@@ -34,24 +35,49 @@ using namespace cimg_library;
 typedef unsigned char uchar;
 typedef unsigned int uint;
 
+// TODO: un-lazy these structs...
+
 namespace Diminer
 {
 
 class Color
 {
 public:
-   Color() : r(0), g(0), b(0), a(255) {}
+	Color() : r(0), g(0), b(0), a(255) {}
+	Color(uint _c) : r(_c), g(_c), b(_c), a(255) {}
+	Color(uint _c, uint _a) : r(_c), g(_c), b(_c), a(_a) {}
+	Color(uint _r, uint _g, uint _b) : r(_r), g(_g), b(_b), a(255) {}
+	Color(uint _r, uint _g, uint _b, uint _a) : r(_r), g(_g), b(_b), a(_a) {}
 
-   uint r, g, b, a;
+	uint r, g, b, a;
 };
+
+class CoordBase
+{
+public:
+	CoordBase() : x(0), y(0) {};
+	CoordBase(int _x, int _y) : x(_x), y(_y) {};
+	uint x, y;
+};
+
+// TODO: proper inheritance!
+class Coord : public CoordBase
+{
+public:
+	Coord() : col(Color()) {};
+	Coord(int _x, int _y) : CoordBase(_x, _y), col(Color()) {}
+	Coord(int _x, int _y, Color _col) : CoordBase(_x, _y), col(_col) {}
+	Color col;
+};
+
+typedef std::shared_ptr<Coord> CoordPtr;
+
+typedef std::vector<CoordPtr> Coords;
+typedef std::vector<CoordPtr> BoundaryColors;
 
 // TODO: img mask test should be switchable
 bool imgMaskTest(Color c);
 
-typedef VecN<int, 2> Coord;
-typedef std::vector<Coord> Coords;
-typedef std::pair<Coord, Color> CoordCol;
-typedef std::vector<CoordCol> BoundaryColors;
 
 } // end namespace Diminer
 
