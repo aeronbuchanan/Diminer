@@ -2,27 +2,41 @@
 <html>
  <head>
   <meta charset="utf-8"/>
-  <script src="debug.js"></script>
+  <script src="debug_splash.js"></script> <!-- TODO: load json file -->
   <script type="application/javascript">
-function check(i, j) {
-    dl = d[i][j];
-    dends = [];
-    dused = [];
-    ds = [];
-    for ( i = 0; i < dl.length; i++ )
+function check(incoming, i, j) {
+    var dl = incoming[i][j];
+    var dends = [];
+    var dused = 0;
+    var ds = [];
+    for ( var i = 0; i < dl.length; i++ )
     {
       ds[dl[i].id] = dl[i];
-      dused[i] = false;
+      dused += dl[i].id;
       if ( dl[i].hither == null && dl[i].thither == null ) { console.log("ERROR: unconnected link! " + dl[i].id); }
       else if ( dl[i].hither == null || dl[i].thither == null ) { dends.push(dl[i]); }
     }
-    console.log("Ends count = " + dends.length);
-    currID = dends[0].id;
-    prevID = null;
-    c = 0;
+    var currID, prevID;
+    if ( dends.length < 1 )
+    {
+     currID = dl[0].id; 
+     prevID = dl[0].thither;
+    }
+    else
+    {
+     currID = dends[0].id; 
+     prevID = null;
+    }
+    var c = 0;
     while( c < ds.length && currID != null )
     {
-       dused[currID] = true;
+       dused -= currID;
+
+       if ( ! ds[currID] )
+       {
+        console.log("ERROR: chain disappeared on link " + prevID + " -> " + currID);
+        break;
+       }
 
        if ( ds[currID].hither == prevID ) nextID = ds[currID].thither;
        else if ( ds[currID].thither == prevID ) nextID = ds[currID].hither;
@@ -32,54 +46,101 @@ function check(i, j) {
        currID = nextID;
        c++;
     }
-    allUsed = true;
-    for ( i = 0; i < dl.length; i++ )
-    {
-       allUsed = allUsed && dused[i];
-    }
-    console.log("All used: " + allUsed);
-    console.log("Finshed");
+    var allUsed = dused == 0;
+    console.log(i + "::" + j + "; Ends count = " + dends.length + "; All used: " + allUsed + " (" + dused + ")");
 }
-  </script>
-  <script type="application/javascript">
-    function draw(i,j) {
-      dl = d[i][j];
-      ds = [];
-      for ( i = 0; i < dl.length; i++ ) ds[dl[i].id] = dl[i];
+
+function clearCanvas() {
+    var canvas = document.getElementById('canvas');
+    if (canvas.getContext) {
+        var ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+}
+
+    function drawPath(p, i, j) {
+      var dl = p[i][j];
+      var ds = [];
+      for ( var i = 0; i < dl.length; i++ ) ds[dl[i].id] = dl[i];
       
       var canvas = document.getElementById('canvas');
       if (canvas.getContext) {
         var ctx = canvas.getContext('2d');
-        ctx.scale(10.0, 10.0);
 
-        ctx.fillStyle = 'rgb(139, 139, 249)';
+	ctx.save();
+
+        ctx.scale(10.0, 10.0);
+        ctx.fillStyle = 'rgb(' + Math.round(255 * Math.random()) + ', ' + Math.round(255 * Math.random()) + ', 254)';
         ctx.lineWidth = 0.1;
         ctx.beginPath();
-        for ( i = 0; i < dl.length; i++ )
+        for ( var i = 0; i < dl.length; i++ )
         {
-          x = dl[i].x;
-          y = dl[i].y;
+          var x = dl[i].x;
+          var y = dl[i].y;
           ctx.fillRect(x - 0.5, y - 0.5, 1, 1);
-          if ( dl[i].hither != null )
+          if ( dl[i].hither != null && ds[dl[i].hither] )
           {
-             c = ds[dl[i].hither];
+             var c = ds[dl[i].hither];
              ctx.moveTo(x, y);
              ctx.lineTo(c.x, c.y);
           }
-          if ( dl[i].thither != null )
+          if ( dl[i].thither != null && ds[dl[i].thither] )
           {
-             c = ds[dl[i].thither];
+             var c = ds[dl[i].thither];
              ctx.moveTo(x, y);
              ctx.lineTo(c.x, c.y);
           }
         }
-        ctx.stroke()
+        ctx.stroke();
 
+        ctx.restore();
       }
     }
+
+    function f(s)
+    {
+    }
+
+    function drawAll()
+    {
+      clearCanvas();
+      for ( var j = 0; j < d.length; j++ )
+      { 
+       var s = d[j];
+       var l = Math.round(document.getElementById('frameNumber').value);
+       if ( l > s.length - 1 ) { l = s.length - 1; }
+       for ( var i = 0; i < s[l].length; i++ )
+       {
+        check(s, l, i); 
+        drawPath(s, l, i);
+       }
+      }
+    }
+
+    function go()
+    {
+     document.getElementById('frameNumber').value = 1;
+     drawAll();
+    }
+
+    function update(n)
+    {
+      n = Math.round(document.getElementById('frameNumber').value) + Math.round(n);
+      if ( n < 0 ) { n = 0; }
+      document.getElementById('frameNumber').value = n;
+      drawAll();
+    }
+
   </script>
  </head>
- <body onload="check(149, 0); draw(149, 0);">
+ <body onload="go();">
+   <div id="controls">
+     <button id="previousFrame" onclick="update(-1);">Back</button>
+     <input id="frameNumber" type='text'/>
+     <button id="redraw" onclick="drawAll();">Redraw</button>
+     <button id="nextFrame" onclick="update(1);">Forward</button>
+   </div>
+   <br>
    <canvas id="canvas" width="1000" height="1000"></canvas>
  </body>
 </html>
