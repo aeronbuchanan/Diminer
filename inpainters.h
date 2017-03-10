@@ -69,7 +69,6 @@ class Inpainter
 {
 public:
 	Inpainter(BoundaryColors const * const);
-	Inpainter(BoundaryColors const * const _b, CImg<uchar> * _img) : m_boundary(_b), debug(_img) {}
 	~Inpainter() {}
 
 	BoundaryColorRanges withinRange(CoordPtr);
@@ -78,15 +77,12 @@ public:
 protected:
 	BoundaryColors const * m_boundary;
 	BoundaryColorGrid m_grid;
-
-	CImg<uchar> * debug;
 };
 
 class BleedInpainter : public Inpainter
 {
 public:
 	BleedInpainter(BoundaryColors const * const _b) : Inpainter(_b) {}
-	BleedInpainter(BoundaryColors const * const _b, CImg<uchar> * _img) : Inpainter(_b, _img) {}
 
 	Color pixelColor(CoordPtr _c);
 };

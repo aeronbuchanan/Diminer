@@ -193,7 +193,7 @@ bool ChainGrouping::addCoordToMiddle(ChainLinkPtr cc)
 		DEBUG2(if ( prev ) std::cout << "Previous ID: " << prev->m_id << std::endl;)
 		DEBUG2(std::cout << "Ready 3" << std::endl;)
 
-		while ( curr != m_chainEnd )
+		while ( curr && curr != m_chainEnd )
 		{
 			DEBUG2(std::cout << "Comparing to ID" << curr->m_id << " (prev: ID";)
 			DEBUG2(if ( prev ) std::cout << prev->m_id; else std::cout << "---";)

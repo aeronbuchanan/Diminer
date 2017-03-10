@@ -192,7 +192,7 @@ int main(int argc, char** argv)
 		switch ( inpaintingFunc )
 		{
 		case 0:
-			inpainters.push_back(new BleedInpainter(&boundaries[i], &image));
+			inpainters.push_back(new BleedInpainter(&boundaries[i]));
 			break;
 		case 1:
 			inpainters.push_back(new WeightedInpainter(&boundaries[i]));
