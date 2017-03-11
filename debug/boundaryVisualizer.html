@@ -2,7 +2,7 @@
 <html>
  <head>
   <meta charset="utf-8"/>
-  <script src="debug_splash.js"></script> <!-- TODO: load json file -->
+  <script src="debug.js"></script> <!-- TODO: load json file -->
   <script type="application/javascript">
 function check(incoming, i, j) {
     var dl = incoming[i][j];
@@ -54,7 +54,14 @@ function clearCanvas() {
     var canvas = document.getElementById('canvas');
     if (canvas.getContext) {
         var ctx = canvas.getContext('2d');
+	ctx.restore();
+        ctx.save();
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+	var scf = document.getElementById('scale').value;
+        ctx.scale(scf, scf);
+	var dx = document.getElementById('xOffset').value;
+	var dy = document.getElementById('yOffset').value;
+        ctx.translate(-dx, -dy);
     }
 }
 
@@ -69,7 +76,6 @@ function clearCanvas() {
 
 	ctx.save();
 
-        ctx.scale(10.0, 10.0);
         ctx.fillStyle = 'rgb(' + Math.round(255 * Math.random()) + ', ' + Math.round(255 * Math.random()) + ', 254)';
         ctx.lineWidth = 0.1;
         ctx.beginPath();
@@ -97,10 +103,6 @@ function clearCanvas() {
       }
     }
 
-    function f(s)
-    {
-    }
-
     function drawAll()
     {
       clearCanvas();
@@ -120,6 +122,14 @@ function clearCanvas() {
     function go()
     {
      document.getElementById('frameNumber').value = 1;
+     document.getElementById('xOffset').value = 0;
+     document.getElementById('yOffset').value = 0;
+     document.getElementById('scale').value = 10;
+     var canvas = document.getElementById('canvas');
+     if (canvas.getContext) {
+      var ctx = canvas.getContext('2d');
+      ctx.save();
+     }
      drawAll();
     }
 
@@ -139,6 +149,9 @@ function clearCanvas() {
      <input id="frameNumber" type='text'/>
      <button id="redraw" onclick="drawAll();">Redraw</button>
      <button id="nextFrame" onclick="update(1);">Forward</button>
+     <br>
+     Scale: <input id="scale" type='text'/><br>
+     Offset: (<input id="xOffset" type='text'/>,<input id="yOffset" type='text'/>)
    </div>
    <br>
    <canvas id="canvas" width="1000" height="1000"></canvas>
