@@ -121,10 +121,11 @@ public:
 
 private:
 	void init(CImg<uchar> const * const _img, CImg<uchar> const * const _mask);
+	int dot(CoordPtr const &, CoordPtr const &);
 
-	std::vector<std::vector<int> > m_boundarySides;
-	BoundaryGrads m_boundaryGrad;
-	float m_maxGrad;
+	//std::vector<std::vector<int> > m_boundarySides;
+	Coords m_maxGradPoints;
+	CImg<double> m_gradImg;
 
 	float m_pow;
 	int m_jitter;

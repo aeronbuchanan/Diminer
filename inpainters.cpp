@@ -122,21 +122,8 @@ BoundaryColorRanges Inpainter::withinRange(CoordPtr const & _c)
 		for ( auto sq = m_grid.begin(); sq != m_grid.end(); sq++ )
 			v.push_back(dBCR(sq->sqrdDistanceTo(_c->x, _c->y), sq->contents));
 
-		/* DEBUG
-		std::cout << "Ranges: ";
-		for ( auto ri = v.begin(); ri != v.end(); ri++)
-			std::cout << ri->first << ",";
-		std::cout << std::endl;
-		// DEBUG END */
-
+		// TODO: pre-bake 8-neighbour connectivity so only nearest quadrant need be found
 		std::sort(v.begin(), v.end(), compare_dBCRs);
-
-		/* DEBUG
-		std::cout << "Sorted: ";
-		for ( auto ri = v.begin(); ri != v.end(); ri++)
-			std::cout << ri->first << ",";
-		std::cout << std::endl;
-		// DEBUG END */
 
 		for ( auto ri = v.begin(); ri != v.end() && ri < v.begin() + 9; ri++)
 			rs.insert(rs.end(), ri->second->begin(), ri->second->end());
@@ -161,11 +148,7 @@ Color BleedInpainter::pixelColor(CoordPtr const & _c)
 	Color bestCol = Color();
 	double bestCount = 0;
 
-	//Coord DEBUG1 = Coord(); // DEBUG
-
 	BoundaryColorRanges rs = withinRange(_c);
-
-	//std::cout << "Searching"; // DEBUG
 
 	for ( auto ri = rs.begin() ; ri != rs.end(); ri++ )
 	{
@@ -177,15 +160,11 @@ Color BleedInpainter::pixelColor(CoordPtr const & _c)
 			double dy = double(_c->y) - double(coord->y);
 			double dist = dx * dx + dy * dy;
 
-			//std::cout << " " << dist; // DEBUG
-
 			if ( dist < bestDist )
 			{
 				bestDist = dist;
 				bestCol = color;
 				bestCount = 1;
-				//DEBUG1 = (*coord); // DEBUG
-				//std::cout << "*"; // DEBUG
 			}
 			else if ( dist == bestDist )
 			{
@@ -200,8 +179,6 @@ Color BleedInpainter::pixelColor(CoordPtr const & _c)
 		}
 	}
 	
-	//std::cout << std::endl; // DEBUG
-
 	/* DEBUG
 	double DEBUGbestDist = std::numeric_limits<double>::max();
 	Coord DEBUG2 = Coord();
@@ -244,6 +221,7 @@ Color WeightedInpainter::pixelColor(CoordPtr const & _c)
 			double dy = double(_c->y) - double(coord->y);
 			double distSqrd = dx * dx + dy * dy;
 			double weight = 1.f / pow(distSqrd, m_pow); // closer pixels more heavily weighted
+			// TODO: check pow() is faster than pre-processed look-up
 
 			redSum += double(color.r) * weight;
 			greSum += double(color.g) * weight;
@@ -262,6 +240,8 @@ Color WeightedInpainter::pixelColor(CoordPtr const & _c)
 
 void GradientWeightedInpainter::init(CImg<uchar> const * const _img, CImg<uchar> const * const _mask)
 {
+	if ( m_boundary->size() < 3 ) return; // not worth it
+
 	CImg<uchar> img(*_img);
 	CImg<uchar> mask(*_mask);
 
@@ -271,7 +251,7 @@ void GradientWeightedInpainter::init(CImg<uchar> const * const _img, CImg<uchar>
 		g(x,y) += img(x,y,k);
 
 	// gradient
-	CImg<double> grad(img.width(), img.height(), 3, 1, 0.f);
+	m_gradImg.assign(img.width(), img.height(), 3, 1, 0.f);
 	//CImg<uchar> debugGrad(img.width(), img.height(), 1, 3, 0);
 
 	// pow series look-up
@@ -354,9 +334,9 @@ void GradientWeightedInpainter::init(CImg<uchar> const * const _img, CImg<uchar>
 			gy /= 32;
 
 			double mag = sqrt( gx * gx + gy * gy );
-			grad(x,y,0) = mag;
-			grad(x,y,1) = gx / mag;
-			grad(x,y,2) = gy / mag;
+			m_gradImg(x,y,0) = mag;
+			m_gradImg(x,y,1) = gx / mag;
+			m_gradImg(x,y,2) = gy / mag;
 
 			//debugGrad(x,y,0,0) = mag;
 			//debugGrad(x,y,0,1) = abs(gx);
@@ -367,114 +347,110 @@ void GradientWeightedInpainter::init(CImg<uchar> const * const _img, CImg<uchar>
 	//debugGrad.save("gradient.bmp");
 
 	// non-max suppress
-	CoordPtr next = m_boundary->front();
-	CoordPtr curr = m_boundary->back();
-	CoordPtr prev;
-	for ( uint i = 1; i < m_boundary->size(); ++i )
+	// TODO: check for and deal with looped boundaries
+	// TODO: measure "peakiness" and also supress insufficiently peaky maximums
+	double maxGrad = 0.f;
+	auto prev = m_boundary->begin();
+	auto curr = prev + 1;
+	auto next = curr + 1;
+	for ( ; next != m_boundary->end(); prev++, curr++, next++ )
 	{
-		prev = curr;
-		curr = next;
-		next = (*m_boundary)[i];
-		if ( grad(curr->x,curr->y,0) >= grad(prev->x, prev->y,0) && grad(curr->x,curr->y,0) > grad(next->x, next->y,0) )
-			m_boundaryGrad.push_back(CoordFFF(curr, grad(curr->x,curr->y,0), grad(curr->x,curr->y,1), grad(curr->x,curr->y,2)));
+		uint x = (*curr)->x;
+		uint y = (*curr)->y;
+		double mag = m_gradImg(x, y, 0);
+		if ( mag >= m_gradImg((*prev)->x, (*prev)->y, 0) && mag > m_gradImg((*next)->x, (*next)->y, 0) )
+		{
+			m_maxGradPoints.push_back( *curr );
+			if ( mag > maxGrad ) maxGrad = mag;
+		}
 	}
-	// last
-	prev = curr;
-	curr = next;
-	next = m_boundary->front(); // TODO: only do this loop calc if boundary chain is actually a loop
-	if ( grad(curr->x,curr->y,0) >= grad(prev->x, prev->y,0) && grad(curr->x,curr->y,0) > grad(next->x, next->y,0) )
-		m_boundaryGrad.push_back(CoordFFF(curr, grad(curr->x,curr->y,0), grad(curr->x,curr->y,1), grad(curr->x,curr->y,2)));
 
-	//std::cout << "DEBUG: " << (m_boundary->size() != m_boundaryGrad.size() ? "FAIL" : "success") << " - size(m_boundary) = " << m_boundary->size() << ", size(m_boundaryGrad) = " << m_boundaryGrad.size() << std::endl;
-	std::cout << "Number of significant gradients = " << m_boundaryGrad.size() << std::endl;
+	std::cout << "Found " << m_maxGradPoints.size() << " worthy gradient points" << std::endl;
 
-	// note which side each boundary coord is on
-	m_maxGrad = 0.f;
-	for ( uint i = 0; i < m_boundaryGrad.size(); ++i )
+	for ( auto gi = m_maxGradPoints.begin(); gi != m_maxGradPoints.end(); gi++ )
+		m_gradImg((*gi)->x, (*gi)->y, 0) = pow(1.f - m_gradImg((*gi)->x, (*gi)->y, 0) / maxGrad, 2.f);
+
+	/* note which side each boundary coord is on
+	for ( auto gc = m_maxGradPoints.begin(); gc != m_maxGradPoints.end(); gc++ )
 	{
-		CoordPtr coord = std::get<0>(m_boundaryGrad[i]);
-		double mag = std::get<1>(m_boundaryGrad[i]);
-		double nx = std::get<2>(m_boundaryGrad[i]);
-		double ny = std::get<3>(m_boundaryGrad[i]);
-
-		if ( mag > m_maxGrad ) m_maxGrad = mag;
+		CoordPtr coord = *gc;
+		double mag = m_gradImg(coord->x, coord->y, 0);
+		double nx = m_gradImg(coord->x, coord->y, 1);
+		double ny = m_gradImg(coord->x, coord->y, 2);
 
 		std::vector<int> info(m_boundary->size());
-		for ( uint j = 0; j < m_boundary->size(); ++j )
+		for ( auto gc = m_boundary->begin(); gc != m_boundary->end(); gc++ )
 		{
-			CoordPtr c = (*m_boundary)[j];
+			CoordPtr c = *gc;
 			double dx = double(c->x) - double(coord->x);
 			double dy = double(c->y) - double(coord->y);
 			double dot = dx * nx + dy * ny;
-			info[j] = dot < 0 ? -1 : dot > 0 ? 1 : 0;
+			info[j] = dot < 0 ? -1 : dot > 0 ? 1 : 0; // function
 		}
 		m_boundarySides.push_back(info);
 	}
+	*/
+}
 
+// Determine on which side point 'c' is of line of gradient at boundary point 'b'
+int GradientWeightedInpainter::dot(CoordPtr const & c, CoordPtr const & b)
+{
+	double nx = m_gradImg(b->x, b->y, 1);
+	double ny = m_gradImg(b->x, b->y, 2);
+	double dx = double(c->x) - double(b->x);
+	double dy = double(c->y) - double(b->y);
+	double dot = dx * nx + dy * ny;
+	return dot < 0 ? -1 : dot > 0 ? 1 : 0;
 }
 
 Color GradientWeightedInpainter::pixelColor(CoordPtr const & _c)
 {
-	std::vector<double> ks(m_boundary->size(), 0.f);
+	if ( m_boundary->size() < 3 ) return Color(); // don;t bother
+
+	// determine which side of all the major grad 
+	std::vector<int> sides(m_maxGradPoints.size());
+	for ( uint i = 0 ; i < m_maxGradPoints.size(); ++i )
+		sides[i] = dot(_c, m_maxGradPoints[i]);
 
 	uint maxd = m_attenuation.width();
-
-	for ( uint i = 0; i < m_boundary->size(); ++i )
-	{
-		CoordPtr coord = (*m_boundary)[i];
-
-		uint dx = abs(double(_c->x) - double(coord->x));
-		uint dy = abs(double(_c->y) - double(coord->y));
-
-		// closer pixels more heavily weighted
-		if ( dx < maxd && dy < maxd ) ks[i] = m_attenuation(dx, dy); 
-		else ks[i] = m_attenuation(maxd - 1, maxd - 1);
-	}
-
-	for ( uint j = 0; j < m_boundaryGrad.size(); ++j )
-	{
-		CoordPtr coord = std::get<0>(m_boundaryGrad[j]);
-
-		double dx = double(_c->x) - double(coord->x);
-		double dy = double(_c->y) - double(coord->y);
-
-		double mag = std::get<1>(m_boundaryGrad[j]);
-		double nx = std::get<2>(m_boundaryGrad[j]);
-		double ny = std::get<3>(m_boundaryGrad[j]);
-
-		double k_atnuation = pow(1.f - mag / m_maxGrad, 2.f);
-
-		double dot = dx * nx + dy * ny;
-		int s = (dot < 0 ? -1 : (dot > 0 ? 1 : 0));
-
-		for ( uint i = 0; i < m_boundary->size(); ++i )
-		{
-			double s_i = m_boundarySides[j][i];
-
-			ks[i] *= ( s_i == s ) ? 1.f : k_atnuation;
-		}
-	}
+	BoundaryColorRanges rs = withinRange(_c);
 
 	double r = 0;
 	double g = 0;
 	double b = 0;
 	double k = 0;
 
-	for ( uint i = 0; i < m_boundary->size(); ++i )
+	// distance weightings, attenuated by gradient segments
+	for ( auto ri = rs.begin() ; ri != rs.end(); ri++ )
 	{
-		Color c_i = (*m_boundary)[i]->col;
-
-		double k_i = std::max(ks[i], double(std::numeric_limits<double>::min()));
-
-		if ( rand() % 100 >= m_jitter )
+		for ( auto bc = ri->first; bc != ri->second; bc++ )
 		{
-			r += k_i * double(c_i.r);
-			g += k_i * double(c_i.g);
-			b += k_i * double(c_i.b);
-			k += k_i;
+			if ( rand() % 100 >= m_jitter )
+			{
+				CoordPtr coord = (*bc);
+
+				uint dx = abs(double(_c->x) - double(coord->x));
+				uint dy = abs(double(_c->y) - double(coord->y));
+
+				double ki = 0;
+
+				// closer pixels more heavily weighted
+				if ( dx < maxd && dy < maxd ) ki = m_attenuation(dx, dy); // TODO: check look-up is faster than pow()
+				else ki = m_attenuation(maxd - 1, maxd - 1);
+
+				// influence of pixels on different side of gradient lines attenuated
+				for ( uint i = 0 ; i < m_maxGradPoints.size(); ++i ) // TODO: reduce the search space on grad lines
+					if ( sides[i] != dot(coord, m_maxGradPoints[i]) ) ki *= m_gradImg(m_maxGradPoints[i]->x, m_maxGradPoints[i]->y, 0) ;
+
+				Color c = coord->col;
+				r += ki * double(c.r);
+				g += ki * double(c.g);
+				b += ki * double(c.b);
+				k += ki;
+			}
 		}
 	}
-
+	
 	Color c;
 	c.r = uchar(r / k);
 	c.g = uchar(g / k);
