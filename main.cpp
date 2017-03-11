@@ -227,10 +227,10 @@ int main(int argc, char** argv)
 				image(x,y,0,1) = c.g;
 				image(x,y,0,2) = c.b;
 			}
-
-			printf("% 6.0f%% ", 100 * i++ / (i_total - 1));
-			for ( uint j = 0; j < 8; ++j ) printf("%c", 8);
+			++i;
 		}
+		printf("% 6.0f%% ", 100 * i / (i_total - 1));
+		for ( uint j = 0; j < 8; ++j ) printf("%c", 8);
 	}
 
 	std::cout << "complete." << std::endl;

@@ -32,38 +32,46 @@
 namespace Diminer
 {
 
-template <class M, class T>
+template <class T>
 class SpatialGridSquare
 {
 public:
-	SpatialGridSquare() : xmax(0), xmin(0), ymax(0), ymin(0), contents(0) {};
+	SpatialGridSquare() : xmax(0), xmin(0), ymax(0), ymin(0) { contents = std::make_shared<T>(); };
+	SpatialGridSquare(double _xn, double _yn, double _xx, double _yx) : xmax(_xx), xmin(_xn), ymax(_yx), ymin(_yn) { contents = std::make_shared<T>(); };
+	SpatialGridSquare(double _xn, double _yn, double _xx, double _yx, T* _c) : xmax(_xx), xmin(_xn), ymax(_yx), ymin(_yn), contents(_c) {};
 
-	M sqrdDistanceTo(M x, M y)
+	double sqrdDistanceTo(double x, double y)
 	{
 		double dx = 0;
-		double dy = 0;
+		double dy = 0; 
 
-		if ( x < xmin ) dx = x - xmin;
-		else if ( x > xmax ) dx = x - xmax;
+		if ( x < xmin ) dx = xmin - x;
+		else if ( x >= xmax ) dx = x - xmax + 1;
 
-		if ( y < ymin ) dy = y - ymin;
-		else if ( y > ymax ) dy = y - ymax;
+		if ( y < ymin ) dy = ymin - y;
+		else if ( y > ymax ) dy = y - ymax + 1;
 
-		return (M)(dx * dx + dy * dy);
+		return dx * dx + dy * dy;
 	}
 
-	M xmax, xmin, ymax, ymin;
-	T* contents;
+	double hasInside(double x, double y)
+	{
+		return x >= xmin && x < xmax && y >= ymin && y < ymax;
+	}
+
+	// min pixels are included, max pixels are not
+	double xmax, xmin, ymax, ymin;
+	std::shared_ptr<T> contents;
 };
 
-template <class M, class T>
-using SpatialGrid = std::vector<SpatialGridSquare<M, T>>;
+template <class T>
+using SpatialGrid = std::vector<SpatialGridSquare<T>>;
 
-typedef std::pair<BoundaryColors::iterator, BoundaryColors::iterator> BoundaryColorRange;
+typedef std::pair<BoundaryColors::const_iterator, BoundaryColors::const_iterator> BoundaryColorRange;
 typedef std::vector<BoundaryColorRange> BoundaryColorRanges;
 
-typedef SpatialGridSquare<double, BoundaryColorRanges> BoundaryColorGridSq;
-typedef SpatialGrid<double, BoundaryColorRanges> BoundaryColorGrid;
+typedef SpatialGridSquare<BoundaryColorRanges> BoundaryColorGridSq;
+typedef SpatialGrid<BoundaryColorRanges> BoundaryColorGrid;
 
 class Inpainter
 {
@@ -71,12 +79,14 @@ public:
 	Inpainter(BoundaryColors const * const);
 	~Inpainter() {}
 
-	BoundaryColorRanges withinRange(CoordPtr);
-	virtual Color pixelColor(CoordPtr);
+	virtual Color pixelColor(CoordPtr const &);
 
 protected:
+	BoundaryColorRanges withinRange(CoordPtr const &);
+
 	BoundaryColors const * m_boundary;
 	BoundaryColorGrid m_grid;
+	double m_gridSize;
 };
 
 class BleedInpainter : public Inpainter
@@ -84,7 +94,7 @@ class BleedInpainter : public Inpainter
 public:
 	BleedInpainter(BoundaryColors const * const _b) : Inpainter(_b) {}
 
-	Color pixelColor(CoordPtr _c);
+	Color pixelColor(CoordPtr const & _c);
 };
 
 class WeightedInpainter : public Inpainter
@@ -92,7 +102,7 @@ class WeightedInpainter : public Inpainter
 public:
 	WeightedInpainter(BoundaryColors const * const _b, float _pow = 2.f) : Inpainter(_b), m_pow(_pow) {}
 
-	Color pixelColor(CoordPtr _c);
+	Color pixelColor(CoordPtr const & _c);
 
 private:
 	float m_pow;
@@ -107,7 +117,7 @@ class GradientWeightedInpainter : public Inpainter
 public:
 	GradientWeightedInpainter(BoundaryColors const * const _b, CImg<uchar> const * const _img, CImg<uchar> const * const _mask, float _pow = 2.f, float _jitter = 0.35, int _dilation = 2) : Inpainter(_b), m_pow(_pow), m_jitter(100 * _jitter) { init(_img, _mask); }
 
-	Color pixelColor(CoordPtr _c);
+	Color pixelColor(CoordPtr const & _c);
 
 private:
 	void init(CImg<uchar> const * const _img, CImg<uchar> const * const _mask);
