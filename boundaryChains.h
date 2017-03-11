@@ -98,10 +98,13 @@ public:
 	void add(CoordPtr c);
 	Coords orderedChains();
 	bool isGood(int widthRef, int heightRef);
+	uint coordCount() { return m_coordCount; }
 
 private:
 	std::vector<ChainGrouping> m_chainGroupings;
 	ChainLinkRefs m_chainLinks;
+
+	uint m_coordCount;
 };
 
 

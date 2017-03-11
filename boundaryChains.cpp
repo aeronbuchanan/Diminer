@@ -237,25 +237,11 @@ void ChainGrouping::addLink(ChainLinkPtr cc)
 
 bool ChainGrouping::matchedToExtremity(ChainLinkPtr cc, ChainLinkPtr e)
 {
-	// neighbour of ONLY the end coord
 	bool r = e->neighbourTypeOf(cc) != NeighbourType::NONE;
-	// if neighbour of next coord in chain, still OK if just diagonally adjacent to that coord
-	/*
-	 *  #    #   O#O  # O  #O
-	 *  #   O#O   #    #O  O#
-	 * OOO            OOO
-	 *
-         * yes  yes  no!  yes  no!
-	 */
-	if ( r && (e->hither || e->thither) )
-	{
-		ChainLinkPtr o = e->hither ? e->hither : e->thither;
-		r = o->neighbourTypeOf(cc) != NeighbourType::FOUR;
-	}
 	return r;
 }
 
-ChainManager::ChainManager()
+ChainManager::ChainManager() : m_coordCount(0)
 {
 	DEBUG1(std::cout << "[" << std::endl;)
 }
@@ -267,6 +253,8 @@ ChainManager::~ChainManager()
 
 void ChainManager::add(CoordPtr c)
 {
+	m_coordCount++;
+
 	ChainLinkPtr cc = std::make_shared<ChainLink>(c);
 	m_chainLinks.push_back(cc);
 
@@ -344,6 +332,8 @@ void ChainManager::add(CoordPtr c)
 
 	// DEBUG
 DEBUG1(
+if ( m_coordCount > 4000 )
+{
 	std::cout << "  [" << std::endl;
 	for ( uint i = 0; i < m_chainGroupings.size(); ++i )
 	{
@@ -363,6 +353,7 @@ DEBUG1(
 		std::cout << "    ]" << (i < m_chainGroupings.size() - 1 ? "," : "") << std::endl;
 	}
 	std::cout << "  ]," << std::endl;
+}
 )
 	// DEBUG END
 }

@@ -140,16 +140,22 @@ int main(int argc, char** argv)
 	{
 		ChainManager cm;
 		uchar regionID = i + 1;
-		uint debugCount = 0;
 		cimg_forXY(regions, x, y)
 		{
 			if ( regions(x, y) == 0 )
 			{
-				if (
+				if (  (
 					( y > 0 && regions(x, y - 1) == regionID ) ||
 					( y < H && regions(x, y + 1) == regionID ) ||
 					( x > 0 && regions(x - 1, y) == regionID ) ||
 					( x < W && regions(x + 1, y) == regionID )
+				      ) && ! (
+					// hack to cope with the not-smart-enough boundary chain manager
+					( y > 0 && regions(x, y - 1) == regionID ) &&
+					( y < H && regions(x, y + 1) == regionID ) &&
+					( x > 0 && regions(x - 1, y) == regionID ) &&
+					( x < W && regions(x + 1, y) == regionID )
+				      )
 				)
 				{
 					Color color(
@@ -158,7 +164,6 @@ int main(int argc, char** argv)
 						image(x, y, 0, 2)
 					);
 					cm.add(std::make_shared<Coord>(x, y, color));
-					++debugCount;
 
 					if ( limitInpainting )
 					{
@@ -209,7 +214,7 @@ int main(int argc, char** argv)
 
 	float i = 0;
 	float i_total = (x_max - x_min + 1) * (y_max - y_min + 1);
-	std::cout << "Inpainting: ";
+	printf("Inpainting:      0%% ");
 
 	// TODO: allow 'blend mode' where mask value is a blend coefficient
 
@@ -229,8 +234,8 @@ int main(int argc, char** argv)
 			}
 			++i;
 		}
-		printf("% 6.0f%% ", 100 * i / (i_total - 1));
 		for ( uint j = 0; j < 8; ++j ) printf("%c", 8);
+		printf("% 6.0f%% ", 100 * i / (i_total - 1));
 	}
 
 	std::cout << "complete." << std::endl;
