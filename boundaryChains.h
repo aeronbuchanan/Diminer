@@ -40,8 +40,8 @@ public:
 	int x() { return m_c->x; }
 	int y() { return m_c->y; }
 
-	NeighbourType neighbourTypeOf(ChainLinkPtr cc);
-	ChainLinkPtr link(ChainLinkPtr cc);
+	NeighbourType neighbourTypeOf(ChainLinkPtr);
+	ChainLinkPtr link(ChainLinkPtr);
 	ChainLinkPtr next(ChainLinkPtr prev);
 	bool replaceLink(ChainLinkPtr old, ChainLinkPtr cc);
 
@@ -59,15 +59,11 @@ typedef std::vector<ChainLinkPtr> ChainLinkRefs;
 class ChainGrouping
 {
 public:
-	ChainGrouping(ChainLinkPtr cc);
-	bool couldInclude(ChainLinkPtr cc);
-	bool matchedToStart(ChainLinkPtr cc);
-	bool matchedToEnd(ChainLinkPtr cc);
-	bool canBeALoop();
-	void addToExtremity(ChainLinkPtr cc, ChainLinkPtr e);
-	void closeLoop(ChainLinkPtr cc);
-	void mergeWith(ChainGrouping & other, ChainLinkPtr cc, ChainLinkPtr e);
-	bool addCoordToMiddle(ChainLinkPtr cc);
+	ChainGrouping(ChainLinkPtr);
+	bool couldInclude(ChainLinkPtr);
+	int addToExtremity(ChainLinkPtr, bool, bool);
+	bool addCoordToMiddle(ChainLinkPtr);
+	void mergeWith(ChainGrouping & other);
 
 	ChainLinkRefs * chainLinks() { return &m_chainLinks; }
 	ChainLinkPtr chainStart() { return m_chainStart; }
@@ -85,8 +81,11 @@ private:
 	ChainLinkRefs m_chainLinks;
 	bool m_isClosedLoop;
 
-	void addLink(ChainLinkPtr cc);
-	bool matchedToExtremity(ChainLinkPtr cc, ChainLinkPtr e);
+	void addLink(ChainLinkPtr);
+	bool canBeALoop();
+	void closeLoop(ChainLinkPtr);
+	bool matchExtremity(ChainLinkPtr, ChainLinkPtr);
+	bool matchExtremityButOne(ChainLinkPtr, ChainLinkPtr);
 };
 
 class ChainManager

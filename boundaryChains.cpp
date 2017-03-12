@@ -104,30 +104,9 @@ bool ChainGrouping::couldInclude(ChainLinkPtr cc)
 	return !m_isClosedLoop && cc->x() >= m_xmin && cc->x() <= m_xmax && cc->y() >= m_ymin && cc->y() <= m_ymax;
 }
 
-bool ChainGrouping::matchedToStart(ChainLinkPtr cc)
-{
-	return !m_isClosedLoop && matchedToExtremity(cc, m_chainStart);
-}
-
-bool ChainGrouping::matchedToEnd(ChainLinkPtr cc)
-{
-	return !m_isClosedLoop && matchedToExtremity(cc, m_chainEnd);
-}
-
 bool ChainGrouping::canBeALoop()
 {
 	return m_chainLinks.size() > 2;
-}
-
-void ChainGrouping::addToExtremity(ChainLinkPtr cc, ChainLinkPtr e)
-{
-	addLink(cc);
-	cc->link(e);
-
-	if ( e == m_chainStart ) m_chainStart = cc;
-	else if ( e == m_chainEnd ) m_chainEnd = cc;
-
-	e->link(cc);
 }
 
 void ChainGrouping::closeLoop(ChainLinkPtr cc)
@@ -145,7 +124,7 @@ void ChainGrouping::closeLoop(ChainLinkPtr cc)
 	m_isClosedLoop = true;
 }
 
-void ChainGrouping::mergeWith(ChainGrouping & other, ChainLinkPtr thisEnd, ChainLinkPtr otherEnd)
+void ChainGrouping::mergeWith(ChainGrouping & other)
 {
 	/* concatenate other chain onto end of this one
 	 * joining together 'thisEnd' of this chain to the 'otherEnd' of the other chain
@@ -160,15 +139,40 @@ void ChainGrouping::mergeWith(ChainGrouping & other, ChainLinkPtr thisEnd, Chain
 	// copy across coords
 	m_chainLinks.insert(m_chainLinks.end(), other.chainLinks()->begin(), other.chainLinks()->end());
 
-	// link ends
+	// link ends and update end ptrs
+	ChainLinkPtr thisEnd;
+	ChainLinkPtr otherEnd;
+	if ( m_chainStart->neighbourTypeOf(other.chainStart()) != NeighbourType::NONE )
+	{
+		thisEnd = m_chainStart;
+		otherEnd = other.chainStart();
+		m_chainStart = other.chainEnd();
+	}
+	else if ( m_chainStart->neighbourTypeOf(other.chainEnd()) != NeighbourType::NONE )
+	{
+		thisEnd = m_chainStart;
+		otherEnd = other.chainEnd();
+		m_chainStart = other.chainStart();
+	}
+	else if ( m_chainEnd->neighbourTypeOf(other.chainStart()) != NeighbourType::NONE )
+	{
+		thisEnd = m_chainEnd;
+		otherEnd = other.chainStart();
+		m_chainEnd = other.chainEnd();
+	}
+	else if ( m_chainEnd->neighbourTypeOf(other.chainEnd()) != NeighbourType::NONE )
+	{
+		thisEnd = m_chainEnd;
+		otherEnd = other.chainEnd();
+		m_chainEnd = other.chainStart();
+	}
+	else
+	{
+		std::cerr << "Ah, crap" << std::endl;
+	}
+
 	otherEnd->link(thisEnd);
 	thisEnd->link(otherEnd);
-
-	// update end ptrs
-	if ( m_chainStart == thisEnd )
-		m_chainStart = other.chainStart() == otherEnd ? other.chainEnd() : other.chainStart();
-	else
-		m_chainEnd = other.chainStart() == otherEnd ? other.chainEnd() : other.chainStart();
 }
 
 bool ChainGrouping::addCoordToMiddle(ChainLinkPtr cc)
@@ -235,10 +239,100 @@ void ChainGrouping::addLink(ChainLinkPtr cc)
 	if ( cc->y() >= m_ymax ) m_ymax = cc->y() + 1;
 }
 
-bool ChainGrouping::matchedToExtremity(ChainLinkPtr cc, ChainLinkPtr e)
+bool ChainGrouping::matchExtremity(ChainLinkPtr cc, ChainLinkPtr ee)
 {
-	bool r = e->neighbourTypeOf(cc) != NeighbourType::NONE;
+	return ee->neighbourTypeOf(cc) != NeighbourType::NONE;
+}
+
+bool ChainGrouping::matchExtremityButOne(ChainLinkPtr cc, ChainLinkPtr ee)
+{
+	DEBUG2(std::cout << "Reference end: " << ee->m_id << std::endl;)
+
+	bool r = false;
+	ChainLinkPtr pe = ee->next(ChainLinkPtr());
+
+	DEBUG2(std::cout << "Penultimate link: " << pe->m_id << std::endl;)
+
+	// check if next to penultimate
+	if ( pe->neighbourTypeOf(cc) != NeighbourType::NONE )
+	{
+		// check that chain can be re-arranged
+		ChainLinkPtr ppe = pe->next(ee);
+
+		DEBUG2(std::cout << "Antipenultimate link: " << ppe->m_id << std::endl;)
+
+		if ( ppe->neighbourTypeOf(ee) != NeighbourType::NONE )
+		{
+			DEBUG2(std::cout << "Let's do this!" << std::endl;)
+
+			// re-arrange chain!
+			ppe->replaceLink(pe, ee);
+			pe->replaceLink(ppe, ChainLinkPtr());
+			ee->link(ppe);
+			if ( m_chainStart == ee ) m_chainStart = pe;
+			else if ( m_chainEnd == ee ) m_chainEnd = pe;
+			else std::cerr << "Bollox" << std::endl;
+			r = true;
+		}
+	}
 	return r;
+}
+
+int ChainGrouping::addToExtremity(ChainLinkPtr cc, bool holdAdding, bool internalCall=false)
+{
+	uint addCount = 0;
+
+	// match ends?
+	bool s = matchExtremity(cc, m_chainStart);
+	bool e = matchExtremity(cc, m_chainEnd);
+
+	DEBUG2(std::cout << "Match results: [start " << (s ? "MATCH" : "X") << "][end " << (e ? "MATCH" : "X") << "]" << std::endl;)
+
+	if ( s && e && !holdAdding && canBeALoop() )
+	{
+		addLink(cc);
+		closeLoop(cc);
+		addCount = 2;
+	}
+	else if ( s || e )
+	{
+		if ( holdAdding )
+		{
+			addCount = -1;
+		}
+		else
+		{
+			addLink(cc);
+			addCount = 1;
+			if ( e )
+			{
+				cc->link(m_chainEnd);
+				m_chainEnd->link(cc);
+				m_chainEnd = cc;
+			}
+			else
+			{
+				cc->link(m_chainStart);
+				m_chainStart->link(cc);
+				m_chainStart = cc;
+			}
+		}
+	}
+
+	// match ends-but-one?
+	if ( addCount == 0 && ! internalCall && m_chainLinks.size() > 2 )
+	{
+		DEBUG2(std::cout << "Looking into re-arranging ends..." << std::endl;)
+
+		if ( matchExtremityButOne(cc, m_chainStart) || matchExtremityButOne(cc, m_chainEnd) )
+		{
+			addCount = addToExtremity(cc, holdAdding, true);
+		}
+
+		DEBUG2(std::cout << "Done" << std::endl;)
+	}
+
+	return addCount;
 }
 
 ChainManager::ChainManager() : m_coordCount(0)
@@ -253,6 +347,7 @@ ChainManager::~ChainManager()
 
 void ChainManager::add(CoordPtr c)
 {
+	DEBUG2(std::cout << "Attemping to add coord (" << c->x << ", " << c->y << ")" << std::endl;)
 	m_coordCount++;
 
 	ChainLinkPtr cc = std::make_shared<ChainLink>(c);
@@ -265,55 +360,44 @@ void ChainManager::add(CoordPtr c)
 	 *
 	 * NB: complex boundaries can result in incorrect boundary shapes
 	 */
-	uint endCount = 0;
+	uint addCount = 0;
 	ChainGrouping * other;
 
-	for ( uint j = 0; j < m_chainGroupings.size(); ++j )
+	// check group ends
+	for ( auto gi = m_chainGroupings.begin(); gi != m_chainGroupings.end(); gi++ )
 	{
-		DEBUG2(std::cout << "Checking ends of group " << j << "..." << std::endl;)
-		bool s = m_chainGroupings[j].matchedToStart(cc);
-		bool e = m_chainGroupings[j].matchedToEnd(cc);
+		bool holdAdding = (addCount == 1);
+		int signal = gi->addToExtremity(cc, holdAdding);
 
-		DEBUG2(std::cout << "Checking loop..." << std::endl;)
-		if ( s && e && m_chainGroupings[j].canBeALoop() )
+		if ( signal < 0 )
 		{
-			// close loop
-			DEBUG2(std::cout << "Closing loop" << std::endl;)
-			m_chainGroupings[j].closeLoop(cc);
-			endCount = 2;
+			DEBUG2(std::cout << "Merging!" << std::endl;)
+			other->mergeWith(*gi);
+			m_chainGroupings.erase(gi);
+			addCount = 2;
 			break;
 		}
-		else if ( s || e )
+		else if ( signal == 1 )
 		{
-			DEBUG2(std::cout << "Matched to end..." << std::endl;)
-			ChainLinkPtr ee = e ? m_chainGroupings[j].chainEnd() : m_chainGroupings[j].chainStart();
-			if ( endCount == 0 )
-			{
-				DEBUG2(std::cout << "Adding to end" << std::endl;)
-				m_chainGroupings[j].addToExtremity(cc, ee);
-				other = &m_chainGroupings[j];
-				endCount = 1;
-			}
-			else
-			{
-				DEBUG2(std::cout << "Merging!" << std::endl;)
-				other->mergeWith(m_chainGroupings[j], cc, ee);
-				m_chainGroupings.erase(m_chainGroupings.begin() + j);
-				break;
-			}
+			DEBUG2(std::cout << "Added to end" << std::endl;)
+			other = &(*gi);
+			addCount = 1;
+		}
+		else if ( signal == 2 )
+		{
+			DEBUG2(std::cout << "Closed loop" << std::endl;)
+			addCount = 2;
+			break;
 		}
 	}
 
-	uint addCount = 0;
-
-	if ( endCount == 0 )
+	// try to add to middle of chains
+	if ( addCount == 0 )
 	{
 		DEBUG2(std::cout << "Attempting insertion..." << std::endl;)
-		// try to add to middle of chains
-		for ( uint j = 0; j < m_chainGroupings.size(); ++j )
+		for ( auto gi = m_chainGroupings.begin(); gi != m_chainGroupings.end(); gi++ )
 		{
-			DEBUG2(std::cout << "Perhaps into group " << j << "..." << std::endl;)
-			if ( m_chainGroupings[j].addCoordToMiddle(cc) )
+			if ( gi->addCoordToMiddle(cc) )
 			{
 				DEBUG2(std::cout << "Inserted!" << std::endl;)
 				++addCount;
@@ -323,7 +407,8 @@ void ChainManager::add(CoordPtr c)
 	}
 
 	DEBUG2(std::cout << "Final checks..." << std::endl;)
-	if ( endCount == 0 && addCount == 0 )
+	// it'll have to be a new grouping
+	if ( addCount == 0 )
 	{
 		DEBUG2(std::cout << "Creating new group" << std::endl;)
 		m_chainGroupings.push_back(ChainGrouping(cc));
@@ -332,7 +417,7 @@ void ChainManager::add(CoordPtr c)
 
 	// DEBUG
 DEBUG1(
-if ( m_coordCount > 4000 )
+if ( m_coordCount > 0 )
 {
 	std::cout << "  [" << std::endl;
 	for ( uint i = 0; i < m_chainGroupings.size(); ++i )

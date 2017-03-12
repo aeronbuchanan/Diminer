@@ -149,28 +149,40 @@ int main(int argc, char** argv)
 					( y < H && regions(x, y + 1) == regionID ) ||
 					( x > 0 && regions(x - 1, y) == regionID ) ||
 					( x < W && regions(x + 1, y) == regionID )
-				      ) && ! (
-					// hack to cope with the not-smart-enough boundary chain manager
-					( y > 0 && regions(x, y - 1) == regionID ) &&
-					( y < H && regions(x, y + 1) == regionID ) &&
-					( x > 0 && regions(x - 1, y) == regionID ) &&
-					( x < W && regions(x + 1, y) == regionID )
 				      )
 				)
 				{
-					Color color(
-						image(x, y, 0, 0),
-						image(x, y, 0, 1),
-						image(x, y, 0, 2)
-					);
-					cm.add(std::make_shared<Coord>(x, y, color));
-
-					if ( limitInpainting )
+					// hack to cope with the not-smart-enough boundary chain manager
+					uint eightNeighbours = 4;
+					if (
+						( y > 0 && regions(x, y - 1) == regionID ) &&
+						( y < H && regions(x, y + 1) == regionID ) &&
+						( x > 0 && regions(x - 1, y) == regionID ) &&
+						( x < W && regions(x + 1, y) == regionID )
+					)
 					{
-						if ( x < x_min ) x_min = x;
-						if ( x > x_max ) x_max = x;
-						if ( y < y_min ) y_min = y;
-						if ( y > y_max ) y_max = y;
+						if ( y > 0 && x > 0 && regions(x - 1, y - 1) == regionID ) eightNeighbours--;
+						if ( y > 0 && x < W && regions(x + 1, y - 1) == regionID ) eightNeighbours--;
+						if ( y < H && x < W && regions(x + 1, y + 1) == regionID ) eightNeighbours--;
+						if ( y < H && x > 0 && regions(x - 1, y + 1) == regionID ) eightNeighbours--;
+					}
+
+					if ( eightNeighbours >= 2)
+					{
+						Color color(
+							image(x, y, 0, 0),
+							image(x, y, 0, 1),
+							image(x, y, 0, 2)
+						);
+						cm.add(std::make_shared<Coord>(x, y, color));
+
+						if ( limitInpainting )
+						{
+							if ( x < x_min ) x_min = x;
+							if ( x > x_max ) x_max = x;
+							if ( y < y_min ) y_min = y;
+							if ( y > y_max ) y_max = y;
+						}
 					}
 				}
 			}
