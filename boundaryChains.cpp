@@ -111,7 +111,6 @@ bool ChainGrouping::canBeALoop()
 
 void ChainGrouping::closeLoop(ChainLinkPtr cc)
 {
-	addLink(cc);
 	cc->link(m_chainStart);
 	cc->link(m_chainEnd);
 	
@@ -241,12 +240,14 @@ void ChainGrouping::addLink(ChainLinkPtr cc)
 
 bool ChainGrouping::matchExtremity(ChainLinkPtr cc, ChainLinkPtr ee)
 {
-	return ee->neighbourTypeOf(cc) != NeighbourType::NONE;
+	return ! m_isClosedLoop && ee->neighbourTypeOf(cc) != NeighbourType::NONE;
 }
 
 bool ChainGrouping::matchExtremityButOne(ChainLinkPtr cc, ChainLinkPtr ee)
 {
 	DEBUG2(std::cout << "Reference end: " << ee->m_id << std::endl;)
+
+	if ( m_isClosedLoop ) return false;
 
 	bool r = false;
 	ChainLinkPtr pe = ee->next(ChainLinkPtr());
@@ -275,6 +276,7 @@ bool ChainGrouping::matchExtremityButOne(ChainLinkPtr cc, ChainLinkPtr ee)
 			r = true;
 		}
 	}
+
 	return r;
 }
 
@@ -416,31 +418,34 @@ void ChainManager::add(CoordPtr c)
 	DEBUG2(std::cout << "Finished" << std::endl;)
 
 	// DEBUG
-DEBUG1(
-if ( m_coordCount > 0 )
-{
-	std::cout << "  [" << std::endl;
-	for ( uint i = 0; i < m_chainGroupings.size(); ++i )
-	{
-		std::cout << "    [" << std::endl;
-		ChainLinkRefs cs = *m_chainGroupings[i].chainLinks();
-		for ( uint j = 0; j < cs.size(); ++j )
-		{
-			ChainLink c = *cs[j];
-			std::cout << "      {ptr: " << cs[j] << ", id: " << c.m_id << ", x: " << c.x() << ", y: " << c.y() << ", hither: ";
-			if ( c.hither ) std::cout << c.hither->m_id;
-			else std::cout << "null";
-			std::cout << ", thither: "; 
-			if ( c.thither ) std::cout << c.thither->m_id;
-			else std::cout << "null";
-			std::cout << "}" << (j < cs.size() - 1 ? "," : "") << std::endl;
-		}
-		std::cout << "    ]" << (i < m_chainGroupings.size() - 1 ? "," : "") << std::endl;
-	}
-	std::cout << "  ]," << std::endl;
-}
-)
+	DEBUG1( printChains(); )
 	// DEBUG END
+}
+
+void ChainManager::printChains()
+{
+	if ( m_coordCount > 0 )
+	{
+		std::cout << "  [" << std::endl;
+		for ( uint i = 0; i < m_chainGroupings.size(); ++i )
+		{
+			std::cout << "    [" << std::endl;
+			ChainLinkRefs cs = *m_chainGroupings[i].chainLinks();
+			for ( uint j = 0; j < cs.size(); ++j )
+			{
+				ChainLink c = *cs[j];
+				std::cout << "      {ptr: " << cs[j] << ", id: " << c.m_id << ", x: " << c.x() << ", y: " << c.y() << ", hither: ";
+				if ( c.hither ) std::cout << c.hither->m_id;
+				else std::cout << "null";
+				std::cout << ", thither: "; 
+				if ( c.thither ) std::cout << c.thither->m_id;
+				else std::cout << "null";
+				std::cout << "}" << (j < cs.size() - 1 ? "," : "") << std::endl;
+			}
+			std::cout << "    ]" << (i < m_chainGroupings.size() - 1 ? "," : "") << std::endl;
+		}
+		std::cout << "  ]," << std::endl;
+	}
 }
 
 // TODO: deal with masks with multiple boundaries

@@ -33,7 +33,6 @@ using namespace cimg_library;
 #define IS_MASKED 255
 
 typedef unsigned char uchar;
-typedef unsigned int uint;
 
 // TODO: un-lazy these structs...
 
@@ -57,7 +56,7 @@ class CoordBase
 public:
 	CoordBase() : x(0), y(0) {};
 	CoordBase(int _x, int _y) : x(_x), y(_y) {};
-	uint x, y;
+	int x, y;
 };
 
 // TODO: proper inheritance!

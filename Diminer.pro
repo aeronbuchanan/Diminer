@@ -11,7 +11,7 @@ INCLUDEPATH += "../CImg/"
 SOURCES += main.cpp \
     inpainters.cpp \
     diminer.cpp \
-    boundaryChains.cpp
+    boundaryChains.cpp \
 
 HEADERS += \
     inpainters.h \
@@ -22,6 +22,6 @@ HEADERS += \
     vecn.h \
     table.h \
     dinimer.h \
-    circularSeam.h\
-    boundaryChains.h
+    circularSeam.h \
+    boundaryChains.h \
 

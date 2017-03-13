@@ -22,10 +22,11 @@
 #include <limits>
 
 #include "inpainters.h"
+#include "boundaryChains.h"
 
 using namespace Diminer;
 
-Inpainter::Inpainter(BoundaryColors const * const _b) : m_boundary(_b), m_gridSize(100)
+Inpainter::Inpainter(BoundaryColors const * const _b) : m_boundary(_b), m_gridSize(200)
 {
 	std::cout << "Gridding... ";
 	std::flush(std::cout); // TODO: flush
@@ -94,7 +95,7 @@ Inpainter::Inpainter(BoundaryColors const * const _b) : m_boundary(_b), m_gridSi
 
 	// TODO: check full coverage
 	/* DEBUG
-	uint count = 0;
+	int count = 0;
 	for ( auto sq = m_grid.begin(); sq != m_grid.end(); sq++ )
 	{
 		std::cout << "GridSq (" << sq->xmin << ", " << sq->ymin << ")--(" << sq->xmax << ", " << sq->ymax << ") :" << std::endl;
@@ -238,35 +239,61 @@ Color WeightedInpainter::pixelColor(CoordPtr const & _c)
 	return c;
 }
 
-void GradientWeightedInpainter::init(CImg<uchar> const * const _img, CImg<uchar> const * const _mask)
+// Determine on which side point 'c' is of line of gradient at boundary point 'b'
+int GradientWeightedInpainter::side(CoordPtr const & c, CoordPtr const & b)
+{
+	double nx = m_gradImg(b->x, b->y, 0, 1);
+	double ny = m_gradImg(b->x, b->y, 0, 2);
+	double dx = double(c->x) - double(b->x);
+	double dy = double(c->y) - double(b->y);
+	double dot = dx * nx + dy * ny;
+	return dot < 0 ? -1 : dot > 0 ? 1 : 0;
+}
+
+// TODO: class it up!
+struct KPoint { 
+	KPoint(double a1, double a2, double a3, double a4, double a5):c1(a1),c2(a2),c3(a3),x(a4),y(a5){}; 
+	double c1, c2, c3, x, y; 
+};
+double KPointDistance(KPoint const & a, KPoint const & b, double spacing)
+{
+	double d1 = a.c1 - b.c1;
+	double d2 = a.c2 - b.c2;
+	double d3 = a.c3 - b.c3;
+	double cd_sqrd = sqrt( d1*d1 + d2*d2 + d3*d3 );
+	double dx = a.x - b.x;
+	double dy = a.y - b.y;
+	double dd_sqrd = dx*dx + dy*dy;
+	double f = 100 / (spacing * spacing);
+	return sqrt( cd_sqrd + dd_sqrd * f);
+};
+
+
+void GradientWeightedInpainter::init(CImg<uchar> const * const _img, CImg<uchar> const * const _mask, CImg<uchar> const * const _regions, int regionID)
 {
 	if ( m_boundary->size() < 3 ) return; // not worth it
 
+	// just for typing convenience
 	CImg<uchar> img(*_img);
 	CImg<uchar> mask(*_mask);
+	CImg<uchar> regions(*_regions);
+
+	int W = img.width();
+	int H = img.height();
 
 	// greyscale
 	CImg<double> g(img.width(), img.height(), 1, 1, 0.f);
-	cimg_forXYC(img, x,y,k)
-		g(x,y) += img(x,y,k);
+	cimg_forXYC(img, x, y, k)
+		g(x, y) += img(x, y, k);
 
 	// gradient
-	m_gradImg.assign(img.width(), img.height(), 3, 1, 0.f);
-	//CImg<uchar> debugGrad(img.width(), img.height(), 1, 3, 0);
+	m_gradImg.assign(img.width(), img.height(), 1, 3, 0.f);
 
 	// pow series look-up
-	int d = ceil( log(1e8) / log(m_pow) ); // find out how far we need to go...
-	m_attenuation.assign(d, d, 1, 1, 1.0);
-	cimg_forXY(m_attenuation,x,y)
-		if ( x > 0 || y > 0 ) m_attenuation(x,y) = 1.f / pow(x * x + y * y, m_pow); // closer pixels are more heavily weighted
-
-	// DEBUG
-	cimg_forXY(m_attenuation,x,y)
-	{
-		if ( x == 0 ) std::cout << "\n";
-		std::cout << m_attenuation(x,y) << ", ";
-	}
-	std::cout << std::endl;
+	int extent = ceil( log(1e8) / log(m_pow) ); // find out how far we need to go...
+	CImg<float> attenuation(extent, extent, 1, 1, 1.0);
+	cimg_forXY(attenuation,x,y)
+		if ( x > 0 || y > 0 ) attenuation(x,y) = 1.f / pow(x * x + y * y, m_pow); // closer pixels are more heavily weighted
 
 /*
 	@misc{NRIGO,
@@ -297,86 +324,403 @@ void GradientWeightedInpainter::init(CImg<uchar> const * const _img, CImg<uchar>
 			int x_n = std::min( g.width() - 1, x + 1);
 			int x_nn = std::min( g.width() - 1, x + 2);
 
-			double gxppyp = mask(x_pp, y_p) ? g(x,y) : g(x_pp, y_p);
-			double gxpyp = mask(x_p, y_p) ? g(x,y) : g(x_p, y_p);
-			double gxnyp = mask(x_n, y_p) ? g(x,y) : g(x_n, y_p);
-			double gxnnyp = mask(x_nn, y_p) ? g(x,y) : g(x_nn, y_p);
+			double gxy = g(x, y);
 
-			double gxppy = mask(x_pp, y) ? g(x,y) : g(x_pp, y);
-			double gxpy = mask(x_p, y) ? g(x,y) : g(x_p, y);
-			double gxny = mask(x_n, y) ? g(x,y) : g(x_n, y);
-			double gxnny = mask(x_nn, y) ? g(x,y) : g(x_nn, y);
+			double gxpyp = mask(x_p, y_p) ? gxy : g(x_p, y_p);
+			double gxppyp = mask(x_pp, y_p) ? gxpyp : g(x_pp, y_p);
+			double gxnyp = mask(x_n, y_p) ? gxy : g(x_n, y_p);
+			double gxnnyp = mask(x_nn, y_p) ? gxnyp : g(x_nn, y_p);
 
-			double gxppyn = mask(x_pp, y_n) ? g(x,y) : g(x_pp, y_n);
-			double gxpyn = mask(x_p, y_n) ? g(x,y) : g(x_p, y_n);
-			double gxnyn = mask(x_n, y_n) ? g(x,y) : g(x_n, y_n);
-			double gxnnyn = mask(x_nn, y_n) ? g(x,y) : g(x_nn, y_n);
+			double gxpy = mask(x_p, y) ? gxy : g(x_p, y);
+			double gxppy = mask(x_pp, y) ? gxpy : g(x_pp, y);
+			double gxny = mask(x_n, y) ? gxy : g(x_n, y);
+			double gxnny = mask(x_nn, y) ? gxny : g(x_nn, y);
+
+			double gxpyn = mask(x_p, y_n) ? gxy : g(x_p, y_n);
+			double gxppyn = mask(x_pp, y_n) ? gxpyn : g(x_pp, y_n);
+			double gxnyn = mask(x_n, y_n) ? gxy : g(x_n, y_n);
+			double gxnnyn = mask(x_nn, y_n) ? gxnyn : g(x_nn, y_n);
 
 			double gx = ( gxnnyn + gxnnyp + 2 * (gxnyn + gxnny + gxnyp) + 4 * gxny ) - ( gxppyp + gxppyn + 2 * (gxppy + gxpyp + gxpyn) + 4 * gxpy );
 			gx /= 32;
 
-			double gxpypp = mask(x_p, y_pp) ? g(x,y) : g(x_p, y_pp, 0);
 			//double gxpyp;
+			double gxpypp = mask(x_p, y_pp) ? gxpyp : g(x_p, y_pp, 0);
 			//double gxpyn;
-			double gxpynn = mask(x_p, y_nn) ? g(x,y) : g(x_p, y_nn, 0);
+			double gxpynn = mask(x_p, y_nn) ? gxpyn : g(x_p, y_nn, 0);
 
-			double gxypp = mask(x, y_pp) ? g(x,y) : g(x, y_pp, 0);
-			double gxyp = mask(x, y_p) ? g(x,y) : g(x, y_p, 0);
-			double gxyn = mask(x, y_n) ? g(x,y) : g(x, y_n, 0);
-			double gxynn = mask(x, y_nn) ? g(x,y) : g(x, y_nn, 0);
+			double gxyp = mask(x, y_p) ? gxy : g(x, y_p, 0);
+			double gxypp = mask(x, y_pp) ? gxyp : g(x, y_pp, 0);
+			double gxyn = mask(x, y_n) ? gxy : g(x, y_n, 0);
+			double gxynn = mask(x, y_nn) ? gxyn : g(x, y_nn, 0);
 
-			double gxnypp = mask(x_n, y_pp) ? g(x,y) : g(x_n, y_pp, 0);
 			//double gxnyp;
+			double gxnypp = mask(x_n, y_pp) ? gxnyp : g(x_n, y_pp, 0);
 			//double gxnyn;
-			double gxnynn = mask(x_n, y_nn) ? g(x,y) : g(x_n, y_nn, 0);
+			double gxnynn = mask(x_n, y_nn) ? gxnyn : g(x_n, y_nn, 0);
 
 			double gy = ( gxnynn + gxpynn + 2 * (gxnyn + gxynn + gxpyn) + 4 * gxyn ) - ( gxpypp + gxnypp + 2 * (gxypp + gxpyp + gxnyp) + 4 * gxyp );
 			gy /= 32;
 
 			double mag = sqrt( gx * gx + gy * gy );
-			m_gradImg(x,y,0) = mag;
-			m_gradImg(x,y,1) = gx / mag;
-			m_gradImg(x,y,2) = gy / mag;
-
-			//debugGrad(x,y,0,0) = mag;
-			//debugGrad(x,y,0,1) = abs(gx);
-			//debugGrad(x,y,0,2) = abs(gy);
+			m_gradImg(x, y, 0, 0) = mag;
+			m_gradImg(x, y, 0, 1) = gx / mag;
+			m_gradImg(x, y, 0, 2) = gy / mag;
 		}
 	}
 
-	//debugGrad.save("gradient.bmp");
+	m_gradImg.save("gradient.png");
 
 	// non-max suppress
 	// TODO: check for and deal with looped boundaries
 	// TODO: measure "peakiness" and also supress insufficiently peaky maximums
 	double maxGrad = 0.f;
+	m_maxGradPoints.push_back(m_boundary->begin());
 	auto prev = m_boundary->begin();
 	auto curr = prev + 1;
 	auto next = curr + 1;
 	for ( ; next != m_boundary->end(); prev++, curr++, next++ )
 	{
-		uint x = (*curr)->x;
-		uint y = (*curr)->y;
-		double mag = m_gradImg(x, y, 0);
-		if ( mag >= m_gradImg((*prev)->x, (*prev)->y, 0) && mag > m_gradImg((*next)->x, (*next)->y, 0) )
+		int x = (*curr)->x;
+		int y = (*curr)->y;
+		double mag = m_gradImg(x, y, 0, 0);
+		if ( mag >= m_gradImg((*prev)->x, (*prev)->y, 0, 0) && mag > m_gradImg((*next)->x, (*next)->y, 0, 0) )
 		{
-			m_maxGradPoints.push_back( *curr );
+			m_maxGradPoints.push_back( curr );
 			if ( mag > maxGrad ) maxGrad = mag;
 		}
 	}
+	if ( m_boundary->size() > 1 )
+		m_maxGradPoints.push_back(m_boundary->end() - 1);
 
 	std::cout << "Found " << m_maxGradPoints.size() << " worthy gradient points" << std::endl;
 
+	if ( m_maxGradPoints.size() < 3 ) return;
+
+	// k-means super-pixel clustering
+	std::cout << "K-means" << std::endl;
+	// TODO: move to special-purpose class
+	double GRAD_THRESHOLD = 50;
+#define NEXT_SIGNIFICANT_GRAD_POINT(itr) while(itr != m_maxGradPoints.end() && m_gradImg((**itr)->x,(**itr)->y,0,0) < GRAD_THRESHOLD) itr++;
+	std::vector<std::shared_ptr<KPoint> > cs;
+	auto gCurr = m_maxGradPoints.begin();
+	auto gNext = gCurr + 1;
+	NEXT_SIGNIFICANT_GRAD_POINT(gNext)
+	// TODO: shift secnd to first
+	while ( gNext != m_maxGradPoints.end() )
+	{
+		auto midpnt = *gCurr;
+		bool flip = false;
+		for ( auto skpptr = *gCurr; skpptr != *gNext; skpptr++, flip = !flip )
+			if ( flip ) midpnt++;
+
+		// get mid-point
+		int mx = (*midpnt)->x;
+		int my = (*midpnt)->y;
+
+		// TODO: needs to be a function
+		// slip to a pixel of lower gradient if possible
+		double minGrad = m_gradImg(mx, my, 0, 0);
+		int nx = mx;
+		int ny = my;
+		for ( int dx = -1; dx <= 1; dx++ )
+		{
+			for ( int dy = -1; dy <= 1; dy++ )
+			{
+				if ( dx != 0 || dy != 0 )
+				{
+					int gx = mx + dx;
+					int gy = my + dy;
+					if ( gx >= 0 && gx < W && gy >= 0 && gy < H && ! mask(gx, gy) && m_gradImg(gx, gy, 0, 0) < minGrad )
+					{
+						minGrad = m_gradImg(gx, gy, 0, 0);
+						nx = gx;
+						ny = gy;
+					}
+				}
+			}
+		}
+
+		double c1 = img(nx, ny, 0, 0);
+		double c2 = img(nx, ny, 0, 1);
+		double c3 = img(nx, ny, 0, 2);
+
+		cs.push_back(std::make_shared<KPoint>(c1, c2, c3, nx, ny));
+
+		gCurr = gNext;
+		gNext++;
+		if ( *gNext != m_maxGradPoints.back() )
+			NEXT_SIGNIFICANT_GRAD_POINT(gNext)
+	}
+
+	int spacing = ceil(double(m_boundary->size()) / double(cs.size()));
+
+	std::cout << "Initialized boundary with " << cs.size() << " seed points (spacing = " << spacing << ")" << std::endl;
+
+	std::vector<std::shared_ptr<KPoint> > xs;
+	for ( int x = spacing / 2; x < W; x += spacing )
+	{
+		for ( int y = spacing / 2; y < H; y += spacing )
+		{
+			if ( ! mask(x, y) )
+			{
+				bool notClose = true;
+				for ( auto ci = cs.begin(); notClose && ci != cs.end(); ci++ )
+				{
+					double dx = x - (*ci)->x;
+					double dy = y - (*ci)->y;
+					notClose = (dx * dx + dy * dy) >= spacing * spacing;
+				}
+				if ( notClose )
+				{
+					// TODO: needs to be a function
+					// slip to a pixel of lower gradient if possible
+					double minGrad = m_gradImg(x, y, 0, 0);
+					int nx = x;
+					int ny = y;
+					for ( int dx = -1; dx <= 1; dx++ )
+					{
+						for ( int dy = -1; dy <= 1; dy++ )
+						{
+							if ( dx != 0 || dy != 0 )
+							{
+								int gx = x + dx;
+								int gy = y + dy;
+								if ( gx >= 0 && gx < W && gy >= 0 && gy < H && ! mask(gx, gy) && m_gradImg(gx, gy, 0, 0) < minGrad )
+								{
+									minGrad = m_gradImg(gx, gy, 0, 0);
+									nx = gx;
+									ny = gy;
+								}
+							}
+						}
+					}
+
+					xs.push_back(std::make_shared<KPoint>(img(nx, ny, 0, 0), img(nx, ny, 0, 1), img(nx, ny, 0, 2), nx, ny));
+				}
+			}
+		}
+	}
+
+	cs.insert(cs.end(), xs.begin(), xs.end());
+
+	std::cout << "Added " << xs.size() << " interior grid seed points" << std::endl;
+	
+	CImg<float> labeling(W, H, 1, 2, std::numeric_limits<float>::max());
+
+	// perform 10 steps of the k-means algo
+	std::cout << "Starting Algorithm" << std::endl;
+	int NUM_STEPS = 10;
+	for ( int j = 0; j < NUM_STEPS; j++ )
+	{
+		std::cout << "Step " << j << std::endl;
+		// update points
+		cimg_forXY(labeling, x, y)
+		{
+			if ( ! mask(x, y) )
+			{
+				std::shared_ptr<KPoint> kp = std::make_shared<KPoint>(img(x, y, 0, 0), img(x, y, 0, 1), img(x, y, 0, 2), x, y);
+				int i = 0;
+				for ( auto ci = cs.begin(); ci != cs.end(); ci++, i++ )
+				{
+					float d = KPointDistance(**ci, *kp, spacing);
+					if ( d < labeling(x, y, 0, 1) )
+					{
+						labeling(x, y, 0, 0) = i;
+						labeling(x, y, 0, 1) = d;
+					}
+				}
+			}
+		}
+		// update means
+		if ( j < NUM_STEPS - 1 )
+		{
+			std::vector<int> counts(cs.size(), 0);
+			for ( auto ci = cs.begin(); ci != cs.end(); ci++ ) { (*ci)->c1 = 0; (*ci)->c2 = 0; (*ci)->c3 = 0; (*ci)->x = 0; (*ci)->y = 0; }
+			cimg_forXY(labeling, x, y)
+			{
+				if ( ! mask(x, y) )
+				{
+					int k = labeling(x, y, 0, 0);
+					cs[k]->c1 += img(x, y, 0, 0);
+					cs[k]->c2 += img(x, y, 0, 1);
+					cs[k]->c3 += img(x, y, 0, 2);
+					cs[k]->x += x;
+					cs[k]->y += y;
+					counts[k]++;
+				}
+			}
+			int i = 0;
+			for ( auto ci = cs.begin(); ci != cs.end(); ci++, i++ )
+			{
+				double count = counts[i];
+				(*ci)->c1 /= count;
+				(*ci)->c2 /= count;
+				(*ci)->c3 /= count;
+				(*ci)->x /= count;
+				(*ci)->y /= count;
+			}
+		}
+	}
+
+	std::cout << "Getting boundary chains" << std::endl;
+
+	std::vector<ChainManager> cms(cs.size());
+	cimg_forXY(labeling, x, y)
+	{
+		if ( ! mask(x, y) )
+		{
+			auto i = labeling(x, y, 0, 0);
+
+			// TODO: functionize
+			if (  (
+				( y > 0 && labeling(x, y - 1, 0, 0) != i ) ||
+				( y < H && labeling(x, y + 1, 0, 0) != i ) ||
+				( x > 0 && labeling(x - 1, y, 0, 0) != i ) ||
+				( x < W && labeling(x + 1, y, 0, 0) != i )
+			      )
+			)
+			{
+				// hack to cope with the not-smart-enough boundary chain manager
+				int eightNeighbours = 4;
+				if (
+					( y > 0 && mask(x, y - 1, 0, 0) != i ) &&
+					( y < H && mask(x, y + 1, 0, 0) != i ) &&
+					( x > 0 && mask(x - 1, y, 0, 0) != i ) &&
+					( x < W && mask(x + 1, y, 0, 0) != i )
+				)
+				{
+					if ( y > 0 && x > 0 && labeling(x - 1, y - 1, 0, 0) != i ) eightNeighbours--;
+					if ( y > 0 && x < W && labeling(x + 1, y - 1, 0, 0) != i ) eightNeighbours--;
+					if ( y < H && x < W && labeling(x + 1, y + 1, 0, 0) != i ) eightNeighbours--;
+					if ( y < H && x > 0 && labeling(x - 1, y + 1, 0, 0) != i ) eightNeighbours--;
+				}
+
+				if ( eightNeighbours >= 2)
+				{
+					Color color(
+						img(x, y, 0, 0),
+						img(x, y, 0, 1),
+						img(x, y, 0, 2)
+					);
+
+					cms[int(i)].add(std::make_shared<Coord>(x, y, color));
+				}
+			}
+		}
+	}
+
+	std::cout << "Finished" << std::endl;
+
+	// DEBUG
+	std::cout << "[" << std::endl;
+	for ( auto cmi = cms.begin(); cmi != cms.end(); cmi++ )
+	{
+		std::cout << "[" << std::endl;
+		(*cmi).printChains();
+		std::cout << "]," << std::endl;
+	}
+	std::cout << "[] ]" << std::endl;
+	// DEBUG END
+
+	// store attenuation factors
 	for ( auto gi = m_maxGradPoints.begin(); gi != m_maxGradPoints.end(); gi++ )
-		m_gradImg((*gi)->x, (*gi)->y, 0) = pow(1.f - m_gradImg((*gi)->x, (*gi)->y, 0) / maxGrad, 2.f);
+		m_gradImg((**gi)->x, (**gi)->y, 0, 0) = pow(1.f - m_gradImg((**gi)->x, (**gi)->y, 0, 0) / maxGrad, 2.f);
+
+	// create regions for each "superpixel" boundary segment
+	gCurr = m_maxGradPoints.begin();
+	gNext = gCurr + 1;
+	int count = 0; // DEBUG
+	// TODO: shift secnd to first
+	for ( ; gNext != m_maxGradPoints.end(); gCurr++, gNext++ )
+	{
+		CoordPtr first = **gCurr;
+		CoordPtr secnd = **gNext;
+
+		double first_mag = m_gradImg(first->x, first->y, 0, 0);
+		double secnd_mag = m_gradImg(secnd->x, secnd->y, 0, 0);
+
+		CoordPtr inside = std::make_shared<Coord>( (first->x + secnd->x) / 2.0, (first->y + secnd->y) / 2.0);
+		int inside_first = side(inside, first);
+		int inside_secnd = side(inside, secnd);
+
+		std::shared_ptr<BoundaryRegion> patch = std::make_shared<BoundaryRegion>();
+
+		patch->xmin = std::max(0, std::min(int(first->x), int(secnd->x)) - extent);
+		patch->xmax = std::min(W - 1, std::max(int(first->x), int(secnd->x)) + extent);
+		patch->ymin = std::max(0, std::min(int(first->y), int(secnd->y)) - extent);
+		patch->ymax = std::min(H - 1, std::max(int(first->y), int(secnd->y)) + extent);
+		patch->colData.assign(patch->xmax - patch->xmin + 1, patch->ymax - patch->ymin + 1, 1, 4, 0);
+
+		//std::cout << count << ": Boundary points (" << first->x << ", " << first->y << ") & (" << secnd->x << ", " << secnd->y << ") ==> box (" << patch->xmin << ", " << patch->ymin << ")--(" << patch->xmax << ", " << patch->ymax << ")" << std::endl; // DEBUG
+		//std::cout << "Inside point (" << inside->x << ", " << inside->y << ") sidedness: " << inside_first << "; " << inside_secnd << std::endl;
+
+		cimg_forXY(patch->colData,xx,yy)
+		{
+			int x = patch->xmin + xx;
+			int y = patch->ymin + yy;
+
+			//if ( xx == 0 && yy != 0 ) std::cout << std::endl;
+			//std::cout << int(regions(x,y)) << ", ";
+
+			if ( mask(x,y) && regions(x,y) == regionID )
+			{
+				CoordPtr cc = std::make_shared<Coord>(x, y);
+
+				double r = 0;
+				double g = 0;
+				double b = 0;
+				double k = 0;
+
+				for ( auto bi = *gCurr; bi != *gNext; bi++ )
+				{
+					CoordPtr bc = (*bi);
+
+					int dx = abs(double(x) - double(bc->x));
+					int dy = abs(double(y) - double(bc->y));
+
+					double ki = 0;
+
+					// closer pixels more heavily weighted
+					if ( dx < extent && dy < extent ) ki = attenuation(dx, dy); // TODO: check look-up is faster than pow()
+					else ki = attenuation(extent - 1, extent - 1);
+
+					// same side as gradient lines?
+					if ( side(cc, first) != inside_first ) ki *= first_mag;
+					if ( side(cc, secnd) != inside_secnd ) ki *= secnd_mag;
+
+					Color c = bc->col;
+					r += ki * double(c.r);
+					g += ki * double(c.g);
+					b += ki * double(c.b);
+					k += ki;
+				}
+
+				patch->colData(xx, yy, 0, 0) = r;
+				patch->colData(xx, yy, 0, 1) = g;
+				patch->colData(xx, yy, 0, 2) = b;
+				patch->colData(xx, yy, 0, 3) = k;
+			}
+		}
+
+		m_boundaryRegions.push_back(patch);
+
+		/* DEBUG
+		count++;
+		char * name = (char*)malloc(250);
+		sprintf(name, "debug_regions_%03d.png", count);
+		patch->colData.save(name);
+		free(name);
+		// DEBUG END */
+	}
 
 	/* note which side each boundary coord is on
 	for ( auto gc = m_maxGradPoints.begin(); gc != m_maxGradPoints.end(); gc++ )
 	{
 		CoordPtr coord = *gc;
-		double mag = m_gradImg(coord->x, coord->y, 0);
-		double nx = m_gradImg(coord->x, coord->y, 1);
-		double ny = m_gradImg(coord->x, coord->y, 2);
+		double mag = m_gradImg(coord->x, coord->y, 0, 0);
+		double nx = m_gradImg(coord->x, coord->y, 0, 1);
+		double ny = m_gradImg(coord->x, coord->y, 0, 2);
 
 		std::vector<int> info(m_boundary->size());
 		for ( auto gc = m_boundary->begin(); gc != m_boundary->end(); gc++ )
@@ -392,70 +736,33 @@ void GradientWeightedInpainter::init(CImg<uchar> const * const _img, CImg<uchar>
 	*/
 }
 
-// Determine on which side point 'c' is of line of gradient at boundary point 'b'
-int GradientWeightedInpainter::dot(CoordPtr const & c, CoordPtr const & b)
-{
-	double nx = m_gradImg(b->x, b->y, 1);
-	double ny = m_gradImg(b->x, b->y, 2);
-	double dx = double(c->x) - double(b->x);
-	double dy = double(c->y) - double(b->y);
-	double dot = dx * nx + dy * ny;
-	return dot < 0 ? -1 : dot > 0 ? 1 : 0;
-}
-
 Color GradientWeightedInpainter::pixelColor(CoordPtr const & _c)
 {
 	if ( m_boundary->size() < 3 ) return Color(); // don;t bother
-
-	// determine which side of all the major grad 
-	std::vector<int> sides(m_maxGradPoints.size());
-	for ( uint i = 0 ; i < m_maxGradPoints.size(); ++i )
-		sides[i] = dot(_c, m_maxGradPoints[i]);
-
-	uint maxd = m_attenuation.width();
-	BoundaryColorRanges rs = withinRange(_c);
 
 	double r = 0;
 	double g = 0;
 	double b = 0;
 	double k = 0;
 
-	// distance weightings, attenuated by gradient segments
-	for ( auto ri = rs.begin() ; ri != rs.end(); ri++ )
+	//std::cout << "(" << _c->x << ", " << _c->y << "):" << std::endl;
+
+	for ( auto pi = m_boundaryRegions.begin(); pi != m_boundaryRegions.end(); pi++ )
 	{
-		for ( auto bc = ri->first; bc != ri->second; bc++ )
+		auto patch = (*pi);
+		if ( _c->x >= patch->xmin && _c->x <= patch->xmax && _c->y >= patch->ymin && _c->y <= patch->ymax )
 		{
-			if ( rand() % 100 >= m_jitter )
-			{
-				CoordPtr coord = (*bc);
+			int xx = _c->x - patch->xmin;
+			int yy = _c->y - patch->ymin;
+			r += patch->colData(xx, yy, 0, 0);
+			g += patch->colData(xx, yy, 0, 1);
+			b += patch->colData(xx, yy, 0, 2);
+			k += patch->colData(xx, yy, 0, 3);
 
-				uint dx = abs(double(_c->x) - double(coord->x));
-				uint dy = abs(double(_c->y) - double(coord->y));
-
-				double ki = 0;
-
-				// closer pixels more heavily weighted
-				if ( dx < maxd && dy < maxd ) ki = m_attenuation(dx, dy); // TODO: check look-up is faster than pow()
-				else ki = m_attenuation(maxd - 1, maxd - 1);
-
-				// influence of pixels on different side of gradient lines attenuated
-				for ( uint i = 0 ; i < m_maxGradPoints.size(); ++i ) // TODO: reduce the search space on grad lines
-					if ( sides[i] != dot(coord, m_maxGradPoints[i]) ) ki *= m_gradImg(m_maxGradPoints[i]->x, m_maxGradPoints[i]->y, 0) ;
-
-				Color c = coord->col;
-				r += ki * double(c.r);
-				g += ki * double(c.g);
-				b += ki * double(c.b);
-				k += ki;
-			}
+			//std::cout << "+ [" << patch->colData(xx, yy, 0, 0) << ", " << patch->colData(xx, yy, 0, 1) << ", " <<patch->colData(xx, yy, 0, 2) << ", " << patch->colData(xx, yy, 0, 3) << "] = [" << r << ", " << g << ", " << b << ", " << k << "] = [" << int(uchar( r / k )) << "; " << int(uchar( g / k )) << "; " << int(uchar( b / k )) << "]" << std::endl;
 		}
 	}
-	
-	Color c;
-	c.r = uchar(r / k);
-	c.g = uchar(g / k);
-	c.b = uchar(b / k);
 
-	return c;
+	return Color( uchar(r / k), uchar(g / k), uchar(g / k) );
 }
 

@@ -97,6 +97,7 @@ public:
 	void add(CoordPtr c);
 	Coords orderedChains();
 	bool isGood(int widthRef, int heightRef);
+	void printChains();
 	uint coordCount() { return m_coordCount; }
 
 private:

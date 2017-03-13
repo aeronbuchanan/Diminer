@@ -115,21 +115,35 @@ typedef std::vector<CoordFFF> BoundaryGrads;
 class GradientWeightedInpainter : public Inpainter
 {
 public:
-	GradientWeightedInpainter(BoundaryColors const * const _b, CImg<uchar> const * const _img, CImg<uchar> const * const _mask, float _pow = 2.f, float _jitter = 0.35, int _dilation = 2) : Inpainter(_b), m_pow(_pow), m_jitter(100 * _jitter) { init(_img, _mask); }
+	GradientWeightedInpainter(
+		BoundaryColors const * const _b, 
+		CImg<uchar> const * const _img, 
+		CImg<uchar> const * const _mask, 
+		CImg<uchar> const * const _regions,
+		int _regionID,
+		float _pow = 5.f, 
+		float _jitter = 0.35, 
+		int _dilation = 2) 
+	: Inpainter(_b), m_pow(_pow), m_jitter(100 * _jitter) { init(_img, _mask, _regions, _regionID); }
 
 	Color pixelColor(CoordPtr const & _c);
 
 private:
-	void init(CImg<uchar> const * const _img, CImg<uchar> const * const _mask);
-	int dot(CoordPtr const &, CoordPtr const &);
+	void init(CImg<uchar> const * const _img, CImg<uchar> const * const _mask, CImg<uchar> const * const _regions, int _regionID);
+	int side(CoordPtr const &, CoordPtr const &);
 
-	//std::vector<std::vector<int> > m_boundarySides;
-	Coords m_maxGradPoints;
+	struct BoundaryRegion
+	{
+		CImg<float> colData;
+		int xmin, xmax, ymin, ymax;
+	};
+
+	std::vector<std::shared_ptr<BoundaryRegion> > m_boundaryRegions;
+	std::vector<Coords::const_iterator> m_maxGradPoints;
 	CImg<double> m_gradImg;
 
 	float m_pow;
 	int m_jitter;
-	CImg<float> m_attenuation;
 };
 
 } // end namespace Diminer
