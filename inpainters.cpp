@@ -271,6 +271,10 @@ void GradientWeightedInpainter::init(SourceImage const * const _img, MaskImage c
 
 	double maxGrad = findSalientPoints(m_boundary, _grads, m_maxGradPoints);
 
+	// store attenuation factors
+	for ( auto gi = m_maxGradPoints.begin(); gi != m_maxGradPoints.end(); gi++ )
+		gradImg((**gi)->x, (**gi)->y, 0, 0) = pow(1.f - gradImg((**gi)->x, (**gi)->y, 0, 0) / maxGrad, 2.f);
+
 	// create regions for each "superpixel" boundary segment
 	auto gCurr = m_maxGradPoints.begin();
 	auto gNext = gCurr + 1;
@@ -359,10 +363,6 @@ void GradientWeightedInpainter::init(SourceImage const * const _img, MaskImage c
 	}
 
 	if ( m_maxGradPoints.size() < 3 ) return;
-
-	// store attenuation factors
-	for ( auto gi = m_maxGradPoints.begin(); gi != m_maxGradPoints.end(); gi++ )
-		gradImg((**gi)->x, (**gi)->y, 0, 0) = pow(1.f - gradImg((**gi)->x, (**gi)->y, 0, 0) / maxGrad, 2.f);
 
 }
 
