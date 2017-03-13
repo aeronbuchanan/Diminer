@@ -74,6 +74,10 @@ typedef std::shared_ptr<Coord> CoordPtr;
 typedef std::vector<CoordPtr> Coords;
 typedef std::vector<CoordPtr> BoundaryColors;
 
+typedef CImg<uchar> SourceImage; // expectation for a 2D 3-color-channel image
+typedef CImg<uchar> MaskImage; // expectation for a 2D 1-color-channel image
+typedef CImg<float> GradImage; // expectation for a 2D 3-color-channel image
+
 // TODO: img mask test should be switchable
 bool imgMaskTest(Color c);
 

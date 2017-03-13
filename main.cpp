@@ -55,11 +55,11 @@ int main(int argc, char** argv)
 		inpaintingFunc = defaultInpaintingFunc;
 	}
 
-	CImg<uchar> image(imageFilename);
-	CImg<uchar> mask(image.width(), image.height(), 1, 1, 0);
+	SourceImage image(imageFilename);
+	MaskImage mask(image.width(), image.height(), 1, 1, 0);
 	if (maskFilename)
 	{
-		CImg<uchar> maskFile(maskFilename);
+		MaskImage maskFile(maskFilename);
 
 		cimg_forXY(mask,x,y)
 		{
@@ -80,15 +80,15 @@ int main(int argc, char** argv)
 		}
 	}
 
-	int count = 0;
+	int regionCount = 0;
 	cimg_forXY(mask,x,y)
 	{
 		if ( mask(x,y) == IS_MASKED )
 		{
-			++count; 
+			++regionCount; 
 			// TODO: deal with any number of mask
-                        if ( count == IS_MASKED ) { std::cerr << "ERROR: too many mask mask" << std::endl; exit(EXIT_FAILURE); }
-			uchar regionID = count;
+                        if ( regionCount == IS_MASKED ) { std::cerr << "ERROR: too many mask mask" << std::endl; exit(EXIT_FAILURE); }
+			uchar regionID = regionCount;
                         mask.draw_fill(x, y, &regionID);
 
                         /*
@@ -100,9 +100,9 @@ int main(int argc, char** argv)
 		}
 	}
 
-	std::cout << "Found " << count << " mask region." << std::endl;
+	std::cout << "Found " << regionCount << " mask region." << std::endl;
 
-	CImg<uchar> * maskOrig;
+	MaskImage * maskOrig;
 
 	if ( !dilation && inpaintingFunc == 2 )
 	{
@@ -111,7 +111,7 @@ int main(int argc, char** argv)
 	if ( dilation )
 	{
 		// TODO: this is a hack to overcome gradient being taken without respect to boundary
-		maskOrig = new CImg<uchar>(mask, false); // force copy
+		maskOrig = new MaskImage(mask, false); // force copy
 		mask.dilate(dilation * 2 + 1);
 	}
 
@@ -121,73 +121,13 @@ int main(int argc, char** argv)
 	mask.save("debug_mask.png");
         */
 
-	// Find region 4-boundaries
-	std::vector<Coords> boundaries;
-	int W = mask.width() - 1;
-	int H = mask.height() - 1;
+	BoundaryManager master(&image, &mask, regionCount);
+	Boundaries * boundaries = master.boundaries();
 
-	int x_min = limitInpainting ? W : 0;
-	int x_max = limitInpainting ? 0 : W;
-	int y_min = limitInpainting ? H : 0;
-	int y_max = limitInpainting ? 0 : H;
-
-	for ( int i = 0; i < count; ++i )
-	{
-		ChainManager cm;
-		uchar regionID = i + 1;
-		cimg_forXY(mask, x, y)
-		{
-			// TODO: efficiencies
-			if ( mask(x, y) != regionID )
-			{
-				// TODO: functionize
-				if (  (
-					( y > 0 && mask(x, y - 1) == regionID ) ||
-					( y < H && mask(x, y + 1) == regionID ) ||
-					( x > 0 && mask(x - 1, y) == regionID ) ||
-					( x < W && mask(x + 1, y) == regionID )
-				      )
-				)
-				{
-					// hack to cope with the not-smart-enough boundary chain manager
-					int eightNeighbours = 4;
-					if (
-						( y > 0 && mask(x, y - 1) == regionID ) &&
-						( y < H && mask(x, y + 1) == regionID ) &&
-						( x > 0 && mask(x - 1, y) == regionID ) &&
-						( x < W && mask(x + 1, y) == regionID )
-					)
-					{
-						if ( y > 0 && x > 0 && mask(x - 1, y - 1) == regionID ) eightNeighbours--;
-						if ( y > 0 && x < W && mask(x + 1, y - 1) == regionID ) eightNeighbours--;
-						if ( y < H && x < W && mask(x + 1, y + 1) == regionID ) eightNeighbours--;
-						if ( y < H && x > 0 && mask(x - 1, y + 1) == regionID ) eightNeighbours--;
-					}
-
-					if ( eightNeighbours >= 2)
-					{
-						Color color(
-							image(x, y, 0, 0),
-							image(x, y, 0, 1),
-							image(x, y, 0, 2)
-						);
-						cm.add(std::make_shared<Coord>(x, y, color));
-
-						if ( limitInpainting )
-						{
-							if ( x < x_min ) x_min = x;
-							if ( x > x_max ) x_max = x;
-							if ( y < y_min ) y_min = y;
-							if ( y > y_max ) y_max = y;
-						}
-					}
-				}
-			}
-		}
-		if ( ! cm.isGood(image.width(), image.height()) )
-			std::cout << "ERROR: boundary ordering failure (fragmented or neither a loop nor spanning the image) - simplify mask and try again?" << std::endl;
-		boundaries.push_back(cm.orderedChains()); // TODO: cope with multiple boundaries for a region
-	}
+	int x_min = limitInpainting ? master.x_min() : 0;
+	int x_max = limitInpainting ? master.x_max() : image.width() - 1;
+	int y_min = limitInpainting ? master.y_min() : 0;
+	int y_max = limitInpainting ? master.y_max() : image.height() - 1;
 
 	std::cout << "Calculated boundaries." << std::endl;
 
@@ -200,7 +140,7 @@ int main(int argc, char** argv)
 	// Inpainting
 	int regionID = 0;
 	std::vector<Inpainter*> inpainters;
-	for ( auto bi = boundaries.begin(); bi != boundaries.end(); bi++ )
+	for ( auto bi = boundaries->begin(); bi != boundaries->end(); bi++ )
 	{
 		regionID++;
 		std::cout << "DEBUG: length of boundary = " << (*bi).size() << std::endl;

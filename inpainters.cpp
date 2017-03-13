@@ -250,25 +250,6 @@ int GradientWeightedInpainter::side(CoordPtr const & c, CoordPtr const & b)
 	return dot < 0 ? -1 : dot > 0 ? 1 : 0;
 }
 
-// TODO: class it up!
-struct KPoint { 
-	KPoint(double a1, double a2, double a3, double a4, double a5):c1(a1),c2(a2),c3(a3),x(a4),y(a5){}; 
-	double c1, c2, c3, x, y; 
-};
-double KPointDistance(KPoint const & a, KPoint const & b, double spacing)
-{
-	double d1 = a.c1 - b.c1;
-	double d2 = a.c2 - b.c2;
-	double d3 = a.c3 - b.c3;
-	double cd_sqrd = sqrt( d1*d1 + d2*d2 + d3*d3 );
-	double dx = a.x - b.x;
-	double dy = a.y - b.y;
-	double dd_sqrd = dx*dx + dy*dy;
-	double f = 100 / (spacing * spacing);
-	return sqrt( cd_sqrd + dd_sqrd * f);
-};
-
-
 void GradientWeightedInpainter::init(CImg<uchar> const * const _img, CImg<uchar> const * const _mask, CImg<uchar> const * const _regions, int regionID)
 {
 	if ( m_boundary->size() < 3 ) return; // not worth it
@@ -308,6 +289,7 @@ void GradientWeightedInpainter::init(CImg<uchar> const * const _img, CImg<uchar>
 	(like an extended Sobel kernel)
 */
 
+	// TODO: calculate only once per image!
 	// TODO: only calculate for boundary
 	// TODO: optimize recalculations
 	for ( int y = 0; y < g.height(); ++y )
@@ -397,222 +379,7 @@ void GradientWeightedInpainter::init(CImg<uchar> const * const _img, CImg<uchar>
 
 	if ( m_maxGradPoints.size() < 3 ) return;
 
-	// k-means super-pixel clustering
-	std::cout << "K-means" << std::endl;
-	// TODO: move to special-purpose class
-	double GRAD_THRESHOLD = 50;
-#define NEXT_SIGNIFICANT_GRAD_POINT(itr) while(itr != m_maxGradPoints.end() && m_gradImg((**itr)->x,(**itr)->y,0,0) < GRAD_THRESHOLD) itr++;
-	std::vector<std::shared_ptr<KPoint> > cs;
-	auto gCurr = m_maxGradPoints.begin();
-	auto gNext = gCurr + 1;
-	NEXT_SIGNIFICANT_GRAD_POINT(gNext)
-	// TODO: shift secnd to first
-	while ( gNext != m_maxGradPoints.end() )
-	{
-		auto midpnt = *gCurr;
-		bool flip = false;
-		for ( auto skpptr = *gCurr; skpptr != *gNext; skpptr++, flip = !flip )
-			if ( flip ) midpnt++;
-
-		// get mid-point
-		int mx = (*midpnt)->x;
-		int my = (*midpnt)->y;
-
-		// TODO: needs to be a function
-		// slip to a pixel of lower gradient if possible
-		double minGrad = m_gradImg(mx, my, 0, 0);
-		int nx = mx;
-		int ny = my;
-		for ( int dx = -1; dx <= 1; dx++ )
-		{
-			for ( int dy = -1; dy <= 1; dy++ )
-			{
-				if ( dx != 0 || dy != 0 )
-				{
-					int gx = mx + dx;
-					int gy = my + dy;
-					if ( gx >= 0 && gx < W && gy >= 0 && gy < H && ! mask(gx, gy) && m_gradImg(gx, gy, 0, 0) < minGrad )
-					{
-						minGrad = m_gradImg(gx, gy, 0, 0);
-						nx = gx;
-						ny = gy;
-					}
-				}
-			}
-		}
-
-		double c1 = img(nx, ny, 0, 0);
-		double c2 = img(nx, ny, 0, 1);
-		double c3 = img(nx, ny, 0, 2);
-
-		cs.push_back(std::make_shared<KPoint>(c1, c2, c3, nx, ny));
-
-		gCurr = gNext;
-		gNext++;
-		if ( *gNext != m_maxGradPoints.back() )
-			NEXT_SIGNIFICANT_GRAD_POINT(gNext)
-	}
-
-	int spacing = ceil(double(m_boundary->size()) / double(cs.size()));
-
-	std::cout << "Initialized boundary with " << cs.size() << " seed points (spacing = " << spacing << ")" << std::endl;
-
-	std::vector<std::shared_ptr<KPoint> > xs;
-	for ( int x = spacing / 2; x < W; x += spacing )
-	{
-		for ( int y = spacing / 2; y < H; y += spacing )
-		{
-			if ( ! mask(x, y) )
-			{
-				bool notClose = true;
-				for ( auto ci = cs.begin(); notClose && ci != cs.end(); ci++ )
-				{
-					double dx = x - (*ci)->x;
-					double dy = y - (*ci)->y;
-					notClose = (dx * dx + dy * dy) >= spacing * spacing;
-				}
-				if ( notClose )
-				{
-					// TODO: needs to be a function
-					// slip to a pixel of lower gradient if possible
-					double minGrad = m_gradImg(x, y, 0, 0);
-					int nx = x;
-					int ny = y;
-					for ( int dx = -1; dx <= 1; dx++ )
-					{
-						for ( int dy = -1; dy <= 1; dy++ )
-						{
-							if ( dx != 0 || dy != 0 )
-							{
-								int gx = x + dx;
-								int gy = y + dy;
-								if ( gx >= 0 && gx < W && gy >= 0 && gy < H && ! mask(gx, gy) && m_gradImg(gx, gy, 0, 0) < minGrad )
-								{
-									minGrad = m_gradImg(gx, gy, 0, 0);
-									nx = gx;
-									ny = gy;
-								}
-							}
-						}
-					}
-
-					xs.push_back(std::make_shared<KPoint>(img(nx, ny, 0, 0), img(nx, ny, 0, 1), img(nx, ny, 0, 2), nx, ny));
-				}
-			}
-		}
-	}
-
-	cs.insert(cs.end(), xs.begin(), xs.end());
-
-	std::cout << "Added " << xs.size() << " interior grid seed points" << std::endl;
-	
-	CImg<float> labeling(W, H, 1, 2, std::numeric_limits<float>::max());
-
-	// perform 10 steps of the k-means algo
-	std::cout << "Starting Algorithm" << std::endl;
-	int NUM_STEPS = 10;
-	for ( int j = 0; j < NUM_STEPS; j++ )
-	{
-		std::cout << "Step " << j << std::endl;
-		// update points
-		cimg_forXY(labeling, x, y)
-		{
-			if ( ! mask(x, y) )
-			{
-				std::shared_ptr<KPoint> kp = std::make_shared<KPoint>(img(x, y, 0, 0), img(x, y, 0, 1), img(x, y, 0, 2), x, y);
-				int i = 0;
-				for ( auto ci = cs.begin(); ci != cs.end(); ci++, i++ )
-				{
-					float d = KPointDistance(**ci, *kp, spacing);
-					if ( d < labeling(x, y, 0, 1) )
-					{
-						labeling(x, y, 0, 0) = i;
-						labeling(x, y, 0, 1) = d;
-					}
-				}
-			}
-		}
-		// update means
-		if ( j < NUM_STEPS - 1 )
-		{
-			std::vector<int> counts(cs.size(), 0);
-			for ( auto ci = cs.begin(); ci != cs.end(); ci++ ) { (*ci)->c1 = 0; (*ci)->c2 = 0; (*ci)->c3 = 0; (*ci)->x = 0; (*ci)->y = 0; }
-			cimg_forXY(labeling, x, y)
-			{
-				if ( ! mask(x, y) )
-				{
-					int k = labeling(x, y, 0, 0);
-					cs[k]->c1 += img(x, y, 0, 0);
-					cs[k]->c2 += img(x, y, 0, 1);
-					cs[k]->c3 += img(x, y, 0, 2);
-					cs[k]->x += x;
-					cs[k]->y += y;
-					counts[k]++;
-				}
-			}
-			int i = 0;
-			for ( auto ci = cs.begin(); ci != cs.end(); ci++, i++ )
-			{
-				double count = counts[i];
-				(*ci)->c1 /= count;
-				(*ci)->c2 /= count;
-				(*ci)->c3 /= count;
-				(*ci)->x /= count;
-				(*ci)->y /= count;
-			}
-		}
-	}
-
-	std::cout << "Getting boundary chains" << std::endl;
-
-	std::vector<ChainManager> cms(cs.size());
-	cimg_forXY(labeling, x, y)
-	{
-		if ( ! mask(x, y) )
-		{
-			auto i = labeling(x, y, 0, 0);
-
-			// TODO: functionize
-			if (  (
-				( y > 0 && labeling(x, y - 1, 0, 0) != i ) ||
-				( y < H && labeling(x, y + 1, 0, 0) != i ) ||
-				( x > 0 && labeling(x - 1, y, 0, 0) != i ) ||
-				( x < W && labeling(x + 1, y, 0, 0) != i )
-			      )
-			)
-			{
-				// hack to cope with the not-smart-enough boundary chain manager
-				int eightNeighbours = 4;
-				if (
-					( y > 0 && mask(x, y - 1, 0, 0) != i ) &&
-					( y < H && mask(x, y + 1, 0, 0) != i ) &&
-					( x > 0 && mask(x - 1, y, 0, 0) != i ) &&
-					( x < W && mask(x + 1, y, 0, 0) != i )
-				)
-				{
-					if ( y > 0 && x > 0 && labeling(x - 1, y - 1, 0, 0) != i ) eightNeighbours--;
-					if ( y > 0 && x < W && labeling(x + 1, y - 1, 0, 0) != i ) eightNeighbours--;
-					if ( y < H && x < W && labeling(x + 1, y + 1, 0, 0) != i ) eightNeighbours--;
-					if ( y < H && x > 0 && labeling(x - 1, y + 1, 0, 0) != i ) eightNeighbours--;
-				}
-
-				if ( eightNeighbours >= 2)
-				{
-					Color color(
-						img(x, y, 0, 0),
-						img(x, y, 0, 1),
-						img(x, y, 0, 2)
-					);
-
-					cms[int(i)].add(std::make_shared<Coord>(x, y, color));
-				}
-			}
-		}
-	}
-
-	std::cout << "Finished" << std::endl;
-
-	// DEBUG
+	/* DEBUG
 	std::cout << "[" << std::endl;
 	for ( auto cmi = cms.begin(); cmi != cms.end(); cmi++ )
 	{
@@ -621,16 +388,15 @@ void GradientWeightedInpainter::init(CImg<uchar> const * const _img, CImg<uchar>
 		std::cout << "]," << std::endl;
 	}
 	std::cout << "[] ]" << std::endl;
-	// DEBUG END
+	// DEBUG END */
 
 	// store attenuation factors
 	for ( auto gi = m_maxGradPoints.begin(); gi != m_maxGradPoints.end(); gi++ )
 		m_gradImg((**gi)->x, (**gi)->y, 0, 0) = pow(1.f - m_gradImg((**gi)->x, (**gi)->y, 0, 0) / maxGrad, 2.f);
 
 	// create regions for each "superpixel" boundary segment
-	gCurr = m_maxGradPoints.begin();
-	gNext = gCurr + 1;
-	int count = 0; // DEBUG
+	auto gCurr = m_maxGradPoints.begin();
+	auto gNext = gCurr + 1;
 	// TODO: shift secnd to first
 	for ( ; gNext != m_maxGradPoints.end(); gCurr++, gNext++ )
 	{

@@ -484,5 +484,82 @@ bool ChainManager::isGood(int widthRef, int heightRef)
 #undef ON_BOUNDARY
 }
 
+void BoundaryManager::init()
+{
+	// Find region 4-boundaries
+	int W = m_mask->width() - 1;
+	int H = m_mask->height() - 1;
+
+	m_xmin = W;
+	m_xmax = 0;
+	m_ymin = H;
+	m_ymax = 0;
+
+	for ( int i = 0; i < m_numRegions; ++i )
+	{
+		ChainManager cm;
+		uchar regionID = i + 1;
+		cimg_forXY( (*m_mask), x, y)
+		{
+			// TODO: efficiencies
+			if ( (*m_mask)(x, y) != regionID )
+			{
+				// TODO: functionize
+				if (  (
+					( y > 0 && (*m_mask)(x, y - 1) == regionID ) ||
+					( y < H && (*m_mask)(x, y + 1) == regionID ) ||
+					( x > 0 && (*m_mask)(x - 1, y) == regionID ) ||
+					( x < W && (*m_mask)(x + 1, y) == regionID )
+				      )
+				)
+				{
+					// hack to cope with the not-smart-enough boundary chain manager
+					int eightNeighbours = 4;
+					if (
+						( y > 0 && (*m_mask)(x, y - 1) == regionID ) &&
+						( y < H && (*m_mask)(x, y + 1) == regionID ) &&
+						( x > 0 && (*m_mask)(x - 1, y) == regionID ) &&
+						( x < W && (*m_mask)(x + 1, y) == regionID )
+					)
+					{
+						if ( y > 0 && x > 0 && (*m_mask)(x - 1, y - 1) == regionID ) eightNeighbours--;
+						if ( y > 0 && x < W && (*m_mask)(x + 1, y - 1) == regionID ) eightNeighbours--;
+						if ( y < H && x < W && (*m_mask)(x + 1, y + 1) == regionID ) eightNeighbours--;
+						if ( y < H && x > 0 && (*m_mask)(x - 1, y + 1) == regionID ) eightNeighbours--;
+					}
+
+					if ( eightNeighbours >= 2)
+					{
+						Color color(
+							(*m_img)(x, y, 0, 0),
+							(*m_img)(x, y, 0, 1),
+							(*m_img)(x, y, 0, 2)
+						);
+						cm.add(std::make_shared<Coord>(x, y, color));
+
+						if ( x < m_xmin ) m_xmin = x;
+						if ( x > m_xmax ) m_xmax = x;
+						if ( y < m_ymin ) m_ymin = y;
+						if ( y > m_ymax ) m_ymax = y;
+					}
+				}
+			}
+		}
+
+		if ( ! cm.isGood(W, H) )
+			std::cout << "ERROR: boundary ordering failure (fragmented or neither a loop nor spanning the image) - simplify mask and try again?" << std::endl;
+
+		// TODO: cope with multiple boundaries for a region
+		// TODO: use shared pointers
+		m_boundaries[i] = cm.orderedChains(); 
+	}
+}
+
+
+
+
+
+
+
 
 

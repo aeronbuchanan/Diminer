@@ -88,6 +88,8 @@ private:
 	bool matchExtremityButOne(ChainLinkPtr, ChainLinkPtr);
 };
 
+typedef Coords Boundary;
+
 class ChainManager
 {
 public:
@@ -95,7 +97,7 @@ public:
 	~ChainManager();
 
 	void add(CoordPtr c);
-	Coords orderedChains();
+	Boundary orderedChains();
 	bool isGood(int widthRef, int heightRef);
 	void printChains();
 	uint coordCount() { return m_coordCount; }
@@ -105,6 +107,30 @@ private:
 	ChainLinkRefs m_chainLinks;
 
 	uint m_coordCount;
+};
+
+typedef std::vector<Boundary> Boundaries;
+
+class BoundaryManager
+{
+public:
+	BoundaryManager(SourceImage const * const _img, MaskImage const * const _mask, int _n) : m_numRegions(_n), m_boundaries(Boundaries(_n)), m_img(_img), m_mask(_mask) { init(); };
+
+	Boundaries * boundaries() { return &m_boundaries; };
+	int x_min() { return m_xmin; };
+	int x_max() { return m_xmax; };
+	int y_min() { return m_ymin; };
+	int y_max() { return m_ymax; };
+
+private:
+	void init();
+
+	int m_numRegions;
+	Boundaries m_boundaries;
+	SourceImage const * const m_img;
+	MaskImage const * const m_mask;
+
+	int m_xmin, m_xmax, m_ymin, m_ymax;
 };
 
 
