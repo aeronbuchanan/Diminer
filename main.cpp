@@ -25,6 +25,8 @@
 #include "inpainters.h"
 #include "boundaryChains.h"
 
+#include "smoothGradient.hpp"
+
 using namespace Diminer;
 
 int main(int argc, char** argv)
@@ -33,10 +35,14 @@ int main(int argc, char** argv)
 
 	cimg_usage("Usage: Diminer [options] -i input\n");
 
+	// TODO: use an inpainter factory
+	char * ipFuncs = (char *)malloc(998);
+	sprintf(ipFuncs, "%d = bleed; %d = blend; %d = gradient-weighted", Inpainters::BLEED, Inpainters::BLEND, Inpainters::GRADS);
+
 	char const * imageFilename = cimg_option("-i", "image.jpg", "image file to be inpainted");
 	char const * maskFilename = cimg_option("-m", "", "mask image denoting region to be inpainted (values > 127)");
 	char const * outputFilename = cimg_option("-o", "inpainted.jpg", "output filename");
-	int inpaintingFunc = cimg_option("-f", 2, "0 = bleed; 1 = weighted; 2 = gradient-weighted");
+	int inpaintingFunc = cimg_option("-f", 2, ipFuncs); free(ipFuncs);
 	float jitter = cimg_option("-j", 0.35, "jitter between 0.f and 1.f");
 	float smoothness = cimg_option("-s", 2.f, "smoothness");
 	int dilation = cimg_option("-r", 0, "mask dilation radius");
@@ -140,6 +146,14 @@ int main(int argc, char** argv)
 	// Inpainting
 	int regionID = 0;
 	std::vector<Inpainter*> inpainters;
+
+	GradImage * grads;
+	if ( inpaintingFunc == Inpainters::GRADS )
+	{
+		grads = new GradImage();
+		smoothGradient(&image, maskOrig, grads);
+	}
+
 	for ( auto bi = boundaries->begin(); bi != boundaries->end(); bi++ )
 	{
 		regionID++;
@@ -147,14 +161,14 @@ int main(int argc, char** argv)
 
 		switch ( inpaintingFunc )
 		{
-		case 0:
+		case Inpainters::BLEED:
 			inpainters.push_back(new BleedInpainter(&*bi));
 			break;
-		case 1:
+		case Inpainters::BLEND:
 			inpainters.push_back(new WeightedInpainter(&*bi));
 			break;
-		case 2:
-			inpainters.push_back(new GradientWeightedInpainter(&*bi, &image, maskOrig, &mask, regionID, smoothness, jitter, dilation));
+		case Inpainters::GRADS:
+			inpainters.push_back(new GradientWeightedInpainter(&*bi, &image, maskOrig, &mask, grads, regionID, smoothness, jitter, dilation));
 			break;
 		default:
 			inpainters.push_back(new BleedInpainter(&*bi));

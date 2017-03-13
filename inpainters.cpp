@@ -240,118 +240,34 @@ Color WeightedInpainter::pixelColor(CoordPtr const & _c)
 }
 
 // Determine on which side point 'c' is of line of gradient at boundary point 'b'
-int GradientWeightedInpainter::side(CoordPtr const & c, CoordPtr const & b)
+int GradientWeightedInpainter::side(CoordPtr const & c, CoordPtr const & b, GradImage const * const gradImg)
 {
-	double nx = m_gradImg(b->x, b->y, 0, 1);
-	double ny = m_gradImg(b->x, b->y, 0, 2);
+	double nx = (*gradImg)(b->x, b->y, 0, 1);
+	double ny = (*gradImg)(b->x, b->y, 0, 2);
 	double dx = double(c->x) - double(b->x);
 	double dy = double(c->y) - double(b->y);
 	double dot = dx * nx + dy * ny;
 	return dot < 0 ? -1 : dot > 0 ? 1 : 0;
 }
 
-void GradientWeightedInpainter::init(CImg<uchar> const * const _img, CImg<uchar> const * const _mask, CImg<uchar> const * const _regions, int regionID)
+void GradientWeightedInpainter::init(SourceImage const * const _img, MaskImage const * const _mask, MaskImage const * const _regions, GradImage const * const _grads, int regionID)
 {
 	if ( m_boundary->size() < 3 ) return; // not worth it
 
 	// just for typing convenience
-	CImg<uchar> img(*_img);
-	CImg<uchar> mask(*_mask);
-	CImg<uchar> regions(*_regions);
+	SourceImage img(*_img);
+	MaskImage mask(*_mask);
+	MaskImage regions(*_regions);
+	GradImage gradImg(*_grads);
 
 	int W = img.width();
 	int H = img.height();
-
-	// greyscale
-	CImg<double> g(img.width(), img.height(), 1, 1, 0.f);
-	cimg_forXYC(img, x, y, k)
-		g(x, y) += img(x, y, k);
-
-	// gradient
-	m_gradImg.assign(img.width(), img.height(), 1, 3, 0.f);
 
 	// pow series look-up
 	int extent = ceil( log(1e8) / log(m_pow) ); // find out how far we need to go...
 	CImg<float> attenuation(extent, extent, 1, 1, 1.0);
 	cimg_forXY(attenuation,x,y)
 		if ( x > 0 || y > 0 ) attenuation(x,y) = 1.f / pow(x * x + y * y, m_pow); // closer pixels are more heavily weighted
-
-/*
-	@misc{NRIGO,
-	Author = {Pavel Holoborodko},
-	Title = {Noise Robust Gradient Operators.},
-	howpublished = {\url{http://www.holoborodko.com/pavel/image-processing/edge-detection/}}
-	year = {2009}
-	}
-
-	dI/dx = 1/32 [ -1 -2 0 2 1; -2 -4 0 4 2; -1 -2 0 2 1 ]
-
-	(like an extended Sobel kernel)
-*/
-
-	// TODO: calculate only once per image!
-	// TODO: only calculate for boundary
-	// TODO: optimize recalculations
-	for ( int y = 0; y < g.height(); ++y )
-	{
-		int y_pp = std::max( 0, y - 2);
-		int y_p = std::max( 0, y - 1);
-		int y_n = std::min( g.height() - 1, y + 1);
-		int y_nn = std::min( g.height() - 1, y + 2);
-
-		for ( int x = 0; x < g.width(); ++x )
-		{
-			int x_pp = std::max( 0, x - 2);
-			int x_p = std::max( 0, x - 1);
-			int x_n = std::min( g.width() - 1, x + 1);
-			int x_nn = std::min( g.width() - 1, x + 2);
-
-			double gxy = g(x, y);
-
-			double gxpyp = mask(x_p, y_p) ? gxy : g(x_p, y_p);
-			double gxppyp = mask(x_pp, y_p) ? gxpyp : g(x_pp, y_p);
-			double gxnyp = mask(x_n, y_p) ? gxy : g(x_n, y_p);
-			double gxnnyp = mask(x_nn, y_p) ? gxnyp : g(x_nn, y_p);
-
-			double gxpy = mask(x_p, y) ? gxy : g(x_p, y);
-			double gxppy = mask(x_pp, y) ? gxpy : g(x_pp, y);
-			double gxny = mask(x_n, y) ? gxy : g(x_n, y);
-			double gxnny = mask(x_nn, y) ? gxny : g(x_nn, y);
-
-			double gxpyn = mask(x_p, y_n) ? gxy : g(x_p, y_n);
-			double gxppyn = mask(x_pp, y_n) ? gxpyn : g(x_pp, y_n);
-			double gxnyn = mask(x_n, y_n) ? gxy : g(x_n, y_n);
-			double gxnnyn = mask(x_nn, y_n) ? gxnyn : g(x_nn, y_n);
-
-			double gx = ( gxnnyn + gxnnyp + 2 * (gxnyn + gxnny + gxnyp) + 4 * gxny ) - ( gxppyp + gxppyn + 2 * (gxppy + gxpyp + gxpyn) + 4 * gxpy );
-			gx /= 32;
-
-			//double gxpyp;
-			double gxpypp = mask(x_p, y_pp) ? gxpyp : g(x_p, y_pp, 0);
-			//double gxpyn;
-			double gxpynn = mask(x_p, y_nn) ? gxpyn : g(x_p, y_nn, 0);
-
-			double gxyp = mask(x, y_p) ? gxy : g(x, y_p, 0);
-			double gxypp = mask(x, y_pp) ? gxyp : g(x, y_pp, 0);
-			double gxyn = mask(x, y_n) ? gxy : g(x, y_n, 0);
-			double gxynn = mask(x, y_nn) ? gxyn : g(x, y_nn, 0);
-
-			//double gxnyp;
-			double gxnypp = mask(x_n, y_pp) ? gxnyp : g(x_n, y_pp, 0);
-			//double gxnyn;
-			double gxnynn = mask(x_n, y_nn) ? gxnyn : g(x_n, y_nn, 0);
-
-			double gy = ( gxnynn + gxpynn + 2 * (gxnyn + gxynn + gxpyn) + 4 * gxyn ) - ( gxpypp + gxnypp + 2 * (gxypp + gxpyp + gxnyp) + 4 * gxyp );
-			gy /= 32;
-
-			double mag = sqrt( gx * gx + gy * gy );
-			m_gradImg(x, y, 0, 0) = mag;
-			m_gradImg(x, y, 0, 1) = gx / mag;
-			m_gradImg(x, y, 0, 2) = gy / mag;
-		}
-	}
-
-	m_gradImg.save("gradient.png");
 
 	// non-max suppress
 	// TODO: check for and deal with looped boundaries
@@ -365,8 +281,8 @@ void GradientWeightedInpainter::init(CImg<uchar> const * const _img, CImg<uchar>
 	{
 		int x = (*curr)->x;
 		int y = (*curr)->y;
-		double mag = m_gradImg(x, y, 0, 0);
-		if ( mag >= m_gradImg((*prev)->x, (*prev)->y, 0, 0) && mag > m_gradImg((*next)->x, (*next)->y, 0, 0) )
+		double mag = gradImg(x, y, 0, 0);
+		if ( mag >= gradImg((*prev)->x, (*prev)->y, 0, 0) && mag > gradImg((*next)->x, (*next)->y, 0, 0) )
 		{
 			m_maxGradPoints.push_back( curr );
 			if ( mag > maxGrad ) maxGrad = mag;
@@ -392,23 +308,24 @@ void GradientWeightedInpainter::init(CImg<uchar> const * const _img, CImg<uchar>
 
 	// store attenuation factors
 	for ( auto gi = m_maxGradPoints.begin(); gi != m_maxGradPoints.end(); gi++ )
-		m_gradImg((**gi)->x, (**gi)->y, 0, 0) = pow(1.f - m_gradImg((**gi)->x, (**gi)->y, 0, 0) / maxGrad, 2.f);
+		gradImg((**gi)->x, (**gi)->y, 0, 0) = pow(1.f - gradImg((**gi)->x, (**gi)->y, 0, 0) / maxGrad, 2.f);
 
 	// create regions for each "superpixel" boundary segment
 	auto gCurr = m_maxGradPoints.begin();
 	auto gNext = gCurr + 1;
+	//int count = 0; // DEBUG
 	// TODO: shift secnd to first
 	for ( ; gNext != m_maxGradPoints.end(); gCurr++, gNext++ )
 	{
 		CoordPtr first = **gCurr;
 		CoordPtr secnd = **gNext;
 
-		double first_mag = m_gradImg(first->x, first->y, 0, 0);
-		double secnd_mag = m_gradImg(secnd->x, secnd->y, 0, 0);
+		double first_mag = gradImg(first->x, first->y, 0, 0);
+		double secnd_mag = gradImg(secnd->x, secnd->y, 0, 0);
 
 		CoordPtr inside = std::make_shared<Coord>( (first->x + secnd->x) / 2.0, (first->y + secnd->y) / 2.0);
-		int inside_first = side(inside, first);
-		int inside_secnd = side(inside, secnd);
+		int inside_first = side(inside, first, _grads);
+		int inside_secnd = side(inside, secnd, _grads);
 
 		std::shared_ptr<BoundaryRegion> patch = std::make_shared<BoundaryRegion>();
 
@@ -452,8 +369,8 @@ void GradientWeightedInpainter::init(CImg<uchar> const * const _img, CImg<uchar>
 					else ki = attenuation(extent - 1, extent - 1);
 
 					// same side as gradient lines?
-					if ( side(cc, first) != inside_first ) ki *= first_mag;
-					if ( side(cc, secnd) != inside_secnd ) ki *= secnd_mag;
+					if ( side(cc, first, _grads) != inside_first ) ki *= first_mag;
+					if ( side(cc, secnd, _grads) != inside_secnd ) ki *= secnd_mag;
 
 					Color c = bc->col;
 					r += ki * double(c.r);
@@ -484,9 +401,9 @@ void GradientWeightedInpainter::init(CImg<uchar> const * const _img, CImg<uchar>
 	for ( auto gc = m_maxGradPoints.begin(); gc != m_maxGradPoints.end(); gc++ )
 	{
 		CoordPtr coord = *gc;
-		double mag = m_gradImg(coord->x, coord->y, 0, 0);
-		double nx = m_gradImg(coord->x, coord->y, 0, 1);
-		double ny = m_gradImg(coord->x, coord->y, 0, 2);
+		double mag = gradImg(coord->x, coord->y, 0, 0);
+		double nx = gradImg(coord->x, coord->y, 0, 1);
+		double ny = gradImg(coord->x, coord->y, 0, 2);
 
 		std::vector<int> info(m_boundary->size());
 		for ( auto gc = m_boundary->begin(); gc != m_boundary->end(); gc++ )

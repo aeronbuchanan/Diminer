@@ -26,11 +26,11 @@
 #include "diminer.h"
 #include "patch.h"
 
-// DEBUG
-#include "CImg.h" 
-
 namespace Diminer
 {
+
+// TODO: Inpainter factory
+enum Inpainters {BLEED, BLEND, GRADS};
 
 template <class T>
 class SpatialGridSquare
@@ -117,20 +117,24 @@ class GradientWeightedInpainter : public Inpainter
 public:
 	GradientWeightedInpainter(
 		BoundaryColors const * const _b, 
-		CImg<uchar> const * const _img, 
-		CImg<uchar> const * const _mask, 
-		CImg<uchar> const * const _regions,
+		SourceImage const * const _img, 
+		MaskImage const * const _mask, 
+		MaskImage const * const _regions,
+		GradImage const * const _grads,
 		int _regionID,
 		float _pow = 5.f, 
 		float _jitter = 0.35, 
 		int _dilation = 2) 
-	: Inpainter(_b), m_pow(_pow), m_jitter(100 * _jitter) { init(_img, _mask, _regions, _regionID); }
+	: Inpainter(_b), m_gradImg(_grads), m_pow(_pow), m_jitter(100 * _jitter) 
+	{ 
+		init(_img, _mask, _regions, _grads,  _regionID);
+	}
 
 	Color pixelColor(CoordPtr const & _c);
 
 private:
-	void init(CImg<uchar> const * const _img, CImg<uchar> const * const _mask, CImg<uchar> const * const _regions, int _regionID);
-	int side(CoordPtr const &, CoordPtr const &);
+	void init(SourceImage const * const _img, MaskImage const * const _mask, MaskImage const * const _regions, GradImage const * const _grads, int _regionID);
+	int side(CoordPtr const &, CoordPtr const &, GradImage const * const);
 
 	struct BoundaryRegion
 	{
@@ -140,7 +144,8 @@ private:
 
 	std::vector<std::shared_ptr<BoundaryRegion> > m_boundaryRegions;
 	std::vector<Coords::const_iterator> m_maxGradPoints;
-	CImg<double> m_gradImg;
+
+	GradImage const * const m_gradImg;
 
 	float m_pow;
 	int m_jitter;

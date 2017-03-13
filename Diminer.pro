@@ -24,4 +24,6 @@ HEADERS += \
     dinimer.h \
     circularSeam.h \
     boundaryChains.h \
+    smoothGradient.hpp
+
 
