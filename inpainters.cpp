@@ -389,6 +389,7 @@ Color GradientWeightedInpainter::pixelColor(CoordPtr const & _c)
 		}
 	}
 
-	return Color( uchar(r / k), uchar(g / k), uchar(g / k) );
+	// TODO: correct handling of switching between regions
+	return Color( uchar(r / k), uchar(g / k), uchar(b / k) );
 }
 
