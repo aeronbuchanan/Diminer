@@ -552,6 +552,8 @@ void BoundaryManager::init()
 		// TODO: cope with multiple boundaries for a region
 		// TODO: use shared pointers
 		m_boundaries[i] = cm.orderedChains(); 
+
+		// cm.printChains(); // DEBUG
 	}
 }
 

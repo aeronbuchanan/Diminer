@@ -12,11 +12,10 @@ SOURCES += main.cpp \
     inpainters.cpp \
     diminer.cpp \
     boundaryChains.cpp \
+    boundaryRegions.cpp
 
 HEADERS += \
     inpainters.h \
-    patch.h \
-    patch.h \
     texSynth.h \
     texSynth.hpp \
     vecn.h \
@@ -24,6 +23,7 @@ HEADERS += \
     dinimer.h \
     circularSeam.h \
     boundaryChains.h \
-    smoothGradient.hpp
+    smoothGradient.hpp \
+    boundaryRegions.h
 
 

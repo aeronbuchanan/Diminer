@@ -24,7 +24,7 @@
 #include <tuple>
 
 #include "diminer.h"
-#include "patch.h"
+#include "boundaryRegions.h"
 
 namespace Diminer
 {
@@ -136,15 +136,8 @@ private:
 	void init(SourceImage const * const _img, MaskImage const * const _mask, MaskImage const * const _regions, GradImage const * const _grads, int _regionID);
 	int side(CoordPtr const &, CoordPtr const &, GradImage const * const);
 
-	struct BoundaryRegion
-	{
-		CImg<float> colData;
-		int xmin, xmax, ymin, ymax;
-	};
-
-	std::vector<std::shared_ptr<BoundaryRegion> > m_boundaryRegions;
-	std::vector<Coords::const_iterator> m_maxGradPoints;
-
+	BoundaryRegions m_boundaryRegions;
+	SalientPointRanges m_maxGradPoints;
 	GradImage const * const m_gradImg;
 
 	float m_pow;

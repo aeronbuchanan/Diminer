@@ -269,46 +269,7 @@ void GradientWeightedInpainter::init(SourceImage const * const _img, MaskImage c
 	cimg_forXY(attenuation,x,y)
 		if ( x > 0 || y > 0 ) attenuation(x,y) = 1.f / pow(x * x + y * y, m_pow); // closer pixels are more heavily weighted
 
-	// non-max suppress
-	// TODO: check for and deal with looped boundaries
-	// TODO: measure "peakiness" and also supress insufficiently peaky maximums
-	double maxGrad = 0.f;
-	m_maxGradPoints.push_back(m_boundary->begin());
-	auto prev = m_boundary->begin();
-	auto curr = prev + 1;
-	auto next = curr + 1;
-	for ( ; next != m_boundary->end(); prev++, curr++, next++ )
-	{
-		int x = (*curr)->x;
-		int y = (*curr)->y;
-		double mag = gradImg(x, y, 0, 0);
-		if ( mag >= gradImg((*prev)->x, (*prev)->y, 0, 0) && mag > gradImg((*next)->x, (*next)->y, 0, 0) )
-		{
-			m_maxGradPoints.push_back( curr );
-			if ( mag > maxGrad ) maxGrad = mag;
-		}
-	}
-	if ( m_boundary->size() > 1 )
-		m_maxGradPoints.push_back(m_boundary->end() - 1);
-
-	std::cout << "Found " << m_maxGradPoints.size() << " worthy gradient points" << std::endl;
-
-	if ( m_maxGradPoints.size() < 3 ) return;
-
-	/* DEBUG
-	std::cout << "[" << std::endl;
-	for ( auto cmi = cms.begin(); cmi != cms.end(); cmi++ )
-	{
-		std::cout << "[" << std::endl;
-		(*cmi).printChains();
-		std::cout << "]," << std::endl;
-	}
-	std::cout << "[] ]" << std::endl;
-	// DEBUG END */
-
-	// store attenuation factors
-	for ( auto gi = m_maxGradPoints.begin(); gi != m_maxGradPoints.end(); gi++ )
-		gradImg((**gi)->x, (**gi)->y, 0, 0) = pow(1.f - gradImg((**gi)->x, (**gi)->y, 0, 0) / maxGrad, 2.f);
+	double maxGrad = findSalientPoints(m_boundary, _grads, m_maxGradPoints);
 
 	// create regions for each "superpixel" boundary segment
 	auto gCurr = m_maxGradPoints.begin();
@@ -327,7 +288,7 @@ void GradientWeightedInpainter::init(SourceImage const * const _img, MaskImage c
 		int inside_first = side(inside, first, _grads);
 		int inside_secnd = side(inside, secnd, _grads);
 
-		std::shared_ptr<BoundaryRegion> patch = std::make_shared<BoundaryRegion>();
+		BoundaryRegionPtr patch = std::make_shared<BoundaryRegion>();
 
 		patch->xmin = std::max(0, std::min(int(first->x), int(secnd->x)) - extent);
 		patch->xmax = std::min(W - 1, std::max(int(first->x), int(secnd->x)) + extent);
@@ -397,26 +358,12 @@ void GradientWeightedInpainter::init(SourceImage const * const _img, MaskImage c
 		// DEBUG END */
 	}
 
-	/* note which side each boundary coord is on
-	for ( auto gc = m_maxGradPoints.begin(); gc != m_maxGradPoints.end(); gc++ )
-	{
-		CoordPtr coord = *gc;
-		double mag = gradImg(coord->x, coord->y, 0, 0);
-		double nx = gradImg(coord->x, coord->y, 0, 1);
-		double ny = gradImg(coord->x, coord->y, 0, 2);
+	if ( m_maxGradPoints.size() < 3 ) return;
 
-		std::vector<int> info(m_boundary->size());
-		for ( auto gc = m_boundary->begin(); gc != m_boundary->end(); gc++ )
-		{
-			CoordPtr c = *gc;
-			double dx = double(c->x) - double(coord->x);
-			double dy = double(c->y) - double(coord->y);
-			double dot = dx * nx + dy * ny;
-			info[j] = dot < 0 ? -1 : dot > 0 ? 1 : 0; // function
-		}
-		m_boundarySides.push_back(info);
-	}
-	*/
+	// store attenuation factors
+	for ( auto gi = m_maxGradPoints.begin(); gi != m_maxGradPoints.end(); gi++ )
+		gradImg((**gi)->x, (**gi)->y, 0, 0) = pow(1.f - gradImg((**gi)->x, (**gi)->y, 0, 0) / maxGrad, 2.f);
+
 }
 
 Color GradientWeightedInpainter::pixelColor(CoordPtr const & _c)
@@ -427,8 +374,6 @@ Color GradientWeightedInpainter::pixelColor(CoordPtr const & _c)
 	double g = 0;
 	double b = 0;
 	double k = 0;
-
-	//std::cout << "(" << _c->x << ", " << _c->y << "):" << std::endl;
 
 	for ( auto pi = m_boundaryRegions.begin(); pi != m_boundaryRegions.end(); pi++ )
 	{
@@ -441,8 +386,6 @@ Color GradientWeightedInpainter::pixelColor(CoordPtr const & _c)
 			g += patch->colData(xx, yy, 0, 1);
 			b += patch->colData(xx, yy, 0, 2);
 			k += patch->colData(xx, yy, 0, 3);
-
-			//std::cout << "+ [" << patch->colData(xx, yy, 0, 0) << ", " << patch->colData(xx, yy, 0, 1) << ", " <<patch->colData(xx, yy, 0, 2) << ", " << patch->colData(xx, yy, 0, 3) << "] = [" << r << ", " << g << ", " << b << ", " << k << "] = [" << int(uchar( r / k )) << "; " << int(uchar( g / k )) << "; " << int(uchar( b / k )) << "]" << std::endl;
 		}
 	}
 

@@ -147,11 +147,10 @@ int main(int argc, char** argv)
 	int regionID = 0;
 	std::vector<Inpainter*> inpainters;
 
-	GradImage * grads;
+	GradImage grads;
 	if ( inpaintingFunc == Inpainters::GRADS )
 	{
-		grads = new GradImage();
-		smoothGradient(&image, maskOrig, grads);
+		smoothGradient(&image, maskOrig, &grads);
 	}
 
 	for ( auto bi = boundaries->begin(); bi != boundaries->end(); bi++ )
@@ -168,7 +167,7 @@ int main(int argc, char** argv)
 			inpainters.push_back(new WeightedInpainter(&*bi));
 			break;
 		case Inpainters::GRADS:
-			inpainters.push_back(new GradientWeightedInpainter(&*bi, &image, maskOrig, &mask, grads, regionID, smoothness, jitter, dilation));
+			inpainters.push_back(new GradientWeightedInpainter(&*bi, &image, maskOrig, &mask, &grads, regionID, smoothness, jitter, dilation));
 			break;
 		default:
 			inpainters.push_back(new BleedInpainter(&*bi));
